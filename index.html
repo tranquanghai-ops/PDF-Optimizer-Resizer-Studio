@@ -8,7 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- PDFLib for PDF manipulation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-    <!-- PDF.js for rendering pages -->
+    <!-- PDF.js for rendering pages and extracting objects -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -36,16 +36,6 @@
             background-color: #f8fafc;
             border-radius: 12px;
             border: 1px solid #e2e8f0;
-        }
-        .slider-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            bottom: 0;
-            overflow: hidden;
-            border-right: 2px solid #3b82f6;
-            background-color: #ffffff;
-            z-index: 10;
         }
         .slider-divider-line {
             position: absolute;
@@ -151,7 +141,7 @@
                     <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-1.5">Mức độ nén mặc định</label>
                     <select id="global-preset" onchange="applyGlobalPreset()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
                         <option value="super" selected>⚡ Siêu Giảm (Nén toàn bộ - Khuyên dùng)</option>
-                        <option value="hybrid">🖼️ Nén Background sang hình, Giữ chữ Vector</option>
+                        <option value="hybrid">🖼️ Phẳng nền sang 1 hình ảnh, Giữ chữ bôi đen (Hybrid)</option>
                         <option value="balanced">⚖️ Cân bằng (Chỉ nén nhẹ ảnh gốc)</option>
                         <option value="vector">📐 Giữ Vector gốc (Chỉ đổi kích thước giấy)</option>
                     </select>
@@ -176,16 +166,63 @@
                     <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-1.5">Độ phân giải & Chất lượng</label>
                     <div class="flex gap-2">
                         <select id="global-dpi" class="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 font-medium text-slate-800">
-                            <option value="96">96 DPI (Rất nhẹ)</option>
-                            <option value="150" selected>150 DPI (Chuẩn nộp)</option>
+                            <option value="72">72 DPI (Siêu nhẹ)</option>
+                            <option value="96">96 DPI (Nhẹ)</option>
+                            <option value="120" selected>120 DPI (Cân bằng)</option>
+                            <option value="150">150 DPI (Chuẩn nộp)</option>
                             <option value="200">200 DPI (Sắc nét)</option>
+                            <option value="300">300 DPI (In ấn cao cấp)</option>
                         </select>
                         <select id="global-quality" class="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 font-medium text-slate-800">
-                            <option value="60">CL 60% (Nén cao)</option>
+                            <option value="40">CL 40% (Nén rất cao)</option>
+                            <option value="50">CL 50% (Nén cao)</option>
+                            <option value="60">CL 60% (Nén vừa)</option>
                             <option value="70" selected>CL 70% (Chuẩn)</option>
-                            <option value="85">CL 85% (Nét cao)</option>
+                            <option value="80">CL 80% (Rõ nét)</option>
+                            <option value="90">CL 90% (Nét rất cao)</option>
+                            <option value="100">CL 100% (Gốc / Không nén)</option>
                         </select>
                     </div>
+                </div>
+            </div>
+
+            <!-- Advanced Optimization Options (Always Visible) -->
+            <div class="pt-3 border-t border-slate-100">
+                <div class="text-xs font-bold text-slate-700 flex items-center justify-between mb-2">
+                    <span class="flex items-center gap-1.5">
+                        <i class="fa-solid fa-filter-circle-xmark text-blue-600"></i> Tùy chọn Tối ưu Nâng cao
+                        <span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Khuyên dùng</span>
+                    </span>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1 text-[11px] text-slate-600">
+                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
+                        <input type="checkbox" id="nitro-annots" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
+                        <span>Xóa Ghi chú & Markups</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
+                        <input type="checkbox" id="nitro-links" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
+                        <span>Xóa Links & Form Fields</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
+                        <input type="checkbox" id="nitro-js" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
+                        <span>Xóa JavaScripts & Mã nhúng</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
+                        <input type="checkbox" id="nitro-bookmarks" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
+                        <span>Xóa Bookmarks & Outlines</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
+                        <input type="checkbox" id="nitro-attachments" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
+                        <span>Xóa File đính kèm</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
+                        <input type="checkbox" id="nitro-thumbs" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
+                        <span>Xóa Thumbnail Images</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
+                        <input type="checkbox" id="nitro-unused" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
+                        <span>Dọn dẹp Đối tượng rác</span>
+                    </label>
                 </div>
             </div>
         </div>
@@ -343,24 +380,21 @@
                     </div>
 
                     <!-- View Mode 2: Swipe Slider Comparison (Overlay) -->
-                    <div id="view-slider-mode" class="hidden w-full max-w-3xl h-full flex flex-col items-center justify-center">
-                        <div id="slider-box" class="slider-container w-full h-[65vh] relative shadow-md">
-                            <!-- Base layer (Original PDF Canvas) -->
-                            <div class="w-full h-full flex items-center justify-center bg-white">
-                                <canvas id="slider-canvas-orig" class="max-w-full max-h-full object-contain"></canvas>
-                            </div>
+                    <div id="view-slider-mode" class="hidden w-full max-w-4xl h-full flex flex-col items-center justify-center">
+                        <div id="slider-box" class="slider-container w-full h-[65vh] relative shadow-md bg-slate-100 flex items-center justify-center overflow-hidden rounded-xl border border-slate-200 select-none">
+                            <!-- Inner wrapper matching exact canvas dimensions -->
+                            <div id="slider-canvas-wrapper" class="relative max-h-[62vh] max-w-full flex items-center justify-center">
+                                <!-- Base layer (Original PDF Canvas) -->
+                                <canvas id="slider-canvas-orig" class="max-h-[62vh] max-w-full object-contain block shadow-sm"></canvas>
 
-                            <!-- Overlay Layer (Optimized PDF Canvas) -->
-                            <div id="slider-overlay-div" class="slider-overlay flex items-center justify-center" style="width: 50%;">
-                                <div id="slider-opt-canvas-wrapper" class="w-full h-full flex items-center justify-center bg-white">
-                                    <canvas id="slider-canvas-opt" class="max-w-full max-h-full object-contain"></canvas>
-                                </div>
-                            </div>
+                                <!-- Overlay Layer (Optimized PDF Canvas superimposed with exact clip-path) -->
+                                <canvas id="slider-canvas-opt" class="absolute top-0 left-0 w-full h-full object-contain block pointer-events-none shadow-sm" style="clip-path: inset(0 calc(100% - 50%) 0 0);"></canvas>
 
-                            <!-- Divider line and Handle -->
-                            <div id="slider-divider" class="slider-divider-line" style="left: 50%;">
-                                <div class="slider-handle-btn">
-                                    <i class="fa-solid fa-arrows-left-right text-xs"></i>
+                                <!-- Divider line and Handle -->
+                                <div id="slider-divider" class="slider-divider-line" style="left: 50%;">
+                                    <div class="slider-handle-btn">
+                                        <i class="fa-solid fa-arrows-left-right text-xs"></i>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -392,10 +426,10 @@
             <div class="p-6 space-y-3 text-xs text-slate-600 overflow-y-auto leading-relaxed">
                 <p class="font-bold text-slate-800 text-sm">Các gợi ý chọn cấu hình nén:</p>
                 <ul class="list-disc pl-5 space-y-2">
-                    <li><b>⚡ Siêu Giảm (Nén toàn bộ sang JPEG):</b> Phù hợp nhất cho file AutoCAD, Illustrator, Photoshop (>50MB). Toàn bộ nội dung được chuyển sang hình nén chuẩn 150 DPI, giảm dung lượng xuống dưới 5MB ngay lập tức.</li>
-                    <li><b>🖼️ Nén Background sang hình, Giữ chữ Vector (Hybrid):</b> Tự động nén chất lượng các hình ảnh đồ họa nặng ở phía sau, nhưng vẫn giữ nguyên font chữ và nét vẽ Vector ở mặt trước cho nét chữ không bao giờ bị nhòe.</li>
+                    <li><b>⚡ Siêu Giảm (Nén toàn bộ sang JPEG):</b> Phù hợp nhất cho file AutoCAD, Illustrator, Photoshop (>100MB). Toàn bộ nội dung được chuyển sang hình nén chuẩn 120-150 DPI, giảm dung lượng xuống dưới 5MB ngay lập tức.</li>
+                    <li><b>🖼️ Nén Background sang hình, Giữ chữ Vector (Hybrid):</b> Tự động phát hiện và nén lại các lớp hình ảnh nền đồ họa nặng, đồng thời giữ nguyên font chữ và nét vẽ Vector ở mặt trước giúp nét chữ sắc nét tuyệt đối.</li>
                     <li><b>📐 Giữ Vector gốc:</b> Giữ nguyên chất lượng vector ban đầu, chỉ tính toán đổi kích thước khổ giấy (A2/A3 ➔ A4).</li>
-                    <li><b>Thuyết trình Slide:</b> Chọn kích thước <b>"Khổ Thuyết trình (16:9)"</b> để file hiển thị đẹp trên màn hình laptop/máy chiếu.</li>
+                    <li><b>Thuyết trình Slide:</b> Chọn kích thước <b>"Khổ Thuyết trình (16:9)"</b> để file hiển thị vừa vặn đẹp mắt trên màn hình laptop/máy chiếu.</li>
                 </ul>
             </div>
         </div>
@@ -430,6 +464,53 @@
         // Slider interaction state
         let isSliderDragging = false;
 
+        function applyNitroPdfCleanups(pdfDoc, options) {
+            try {
+                const { PDFName } = PDFLib;
+                
+                if (options.removeFormFields) {
+                    pdfDoc.catalog.delete(PDFName.of('AcroForm'));
+                }
+                if (options.removeJavaScripts) {
+                    pdfDoc.catalog.delete(PDFName.of('Names'));
+                    pdfDoc.catalog.delete(PDFName.of('OpenAction'));
+                    pdfDoc.catalog.delete(PDFName.of('AA'));
+                }
+                if (options.removeBookmarks) {
+                    pdfDoc.catalog.delete(PDFName.of('Outlines'));
+                }
+                if (options.removeAttachments) {
+                    pdfDoc.catalog.delete(PDFName.of('EmbeddedFiles'));
+                    pdfDoc.catalog.delete(PDFName.of('AF'));
+                }
+                
+                const pages = pdfDoc.getPages();
+                pages.forEach(page => {
+                    if (options.removeAnnotations || options.removeLinks) {
+                        page.node.delete(PDFName.of('Annots'));
+                    }
+                    if (options.removeThumbnails) {
+                        page.node.delete(PDFName.of('Thumb'));
+                    }
+                });
+            } catch (e) {
+                console.warn("Lỗi khi làm sạch cấu trúc PDF:", e);
+            }
+        }
+
+        function getNitroOptionsFromUI() {
+            return {
+                removeAnnotations: document.getElementById('nitro-annots')?.checked ?? true,
+                removeLinks: document.getElementById('nitro-links')?.checked ?? true,
+                removeJavaScripts: document.getElementById('nitro-js')?.checked ?? true,
+                removeBookmarks: document.getElementById('nitro-bookmarks')?.checked ?? true,
+                removeAttachments: document.getElementById('nitro-attachments')?.checked ?? true,
+                removeThumbnails: document.getElementById('nitro-thumbs')?.checked ?? true,
+                removeFormFields: document.getElementById('nitro-links')?.checked ?? true,
+                removeUnusedObjects: document.getElementById('nitro-unused')?.checked ?? true
+            };
+        }
+
         function detectPaperFormat(widthMm, heightMm) {
             const minDim = Math.min(widthMm, heightMm);
             const maxDim = Math.max(widthMm, heightMm);
@@ -453,10 +534,10 @@
             const quality = document.getElementById('global-quality');
 
             if (preset === 'super') {
-                dpi.value = '150';
+                dpi.value = '120';
                 quality.value = '60';
             } else if (preset === 'hybrid') {
-                dpi.value = '150';
+                dpi.value = '120';
                 quality.value = '70';
             } else if (preset === 'balanced') {
                 dpi.value = '150';
@@ -470,7 +551,7 @@
         function resetGlobalSettings() {
             document.getElementById('global-preset').value = 'super';
             document.getElementById('global-resize').value = 'A4';
-            document.getElementById('global-dpi').value = '150';
+            document.getElementById('global-dpi').value = '120';
             document.getElementById('global-quality').value = '70';
         }
 
@@ -485,12 +566,14 @@
             const resizeMode = document.getElementById('global-resize').value;
             const dpi = parseInt(document.getElementById('global-dpi').value);
             const quality = parseInt(document.getElementById('global-quality').value) / 100;
+            const nitroOpts = getNitroOptionsFromUI();
 
             filesQueue.forEach(item => {
                 item.settings.preset = preset;
                 item.settings.resizeMode = resizeMode;
                 item.settings.dpi = dpi;
                 item.settings.quality = quality;
+                item.settings.nitro = { ...nitroOpts };
             });
 
             renderQueue();
@@ -526,6 +609,7 @@
             const globalPreset = document.getElementById('global-preset').value;
             const globalDpi = parseInt(document.getElementById('global-dpi').value);
             const globalQuality = parseInt(document.getElementById('global-quality').value) / 100;
+            const nitroOpts = getNitroOptionsFromUI();
 
             for (let file of fileList) {
                 if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
@@ -570,7 +654,8 @@
                         preset: globalPreset,
                         resizeMode: globalResize,
                         dpi: globalDpi,
-                        quality: globalQuality
+                        quality: globalQuality,
+                        nitro: { ...nitroOpts }
                     },
 
                     processedBlob: null,
@@ -614,6 +699,11 @@
             else if (key === 'resizeMode') item.settings.resizeMode = value;
             else if (key === 'dpi') item.settings.dpi = parseInt(value);
             else if (key === 'quality') item.settings.quality = parseFloat(value);
+            else if (key.startsWith('nitro-')) {
+                const nitroKey = key.replace('nitro-', '');
+                if (!item.settings.nitro) item.settings.nitro = getNitroOptionsFromUI();
+                item.settings.nitro[nitroKey] = value;
+            }
         }
 
         function renderQueue() {
@@ -703,43 +793,87 @@
 
                     <!-- Individual File Settings Panel -->
                     ${item.showSettingsPanel ? `
-                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mt-1">
-                            <div>
-                                <label class="block font-semibold text-slate-600 mb-1">Chế độ nén:</label>
-                                <select onchange="updateFileSetting('${item.id}', 'preset', this.value)" class="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
-                                    <option value="super" ${item.settings.preset === 'super' ? 'selected' : ''}>⚡ Siêu giảm (Nén toàn bộ JPEG)</option>
-                                    <option value="hybrid" ${item.settings.preset === 'hybrid' ? 'selected' : ''}>🖼️ Nén Background, Giữ chữ Vector</option>
-                                    <option value="balanced" ${item.settings.preset === 'balanced' ? 'selected' : ''}>⚖️ Cân bằng (Nén nhẹ ảnh gốc)</option>
-                                    <option value="vector" ${item.settings.preset === 'vector' ? 'selected' : ''}>📐 Giữ Vector gốc</option>
-                                </select>
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-3 text-xs mt-1">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block font-semibold text-slate-600 mb-1">Chế độ nén:</label>
+                                    <select onchange="updateFileSetting('${item.id}', 'preset', this.value)" class="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
+                                        <option value="super" ${item.settings.preset === 'super' ? 'selected' : ''}>⚡ Siêu giảm (Nén toàn bộ JPEG)</option>
+                                        <option value="hybrid" ${item.settings.preset === 'hybrid' ? 'selected' : ''}>🖼️ Phẳng nền sang 1 hình, Giữ chữ bôi đen</option>
+                                        <option value="balanced" ${item.settings.preset === 'balanced' ? 'selected' : ''}>⚖️ Cân bằng (Nén nhẹ ảnh gốc)</option>
+                                        <option value="vector" ${item.settings.preset === 'vector' ? 'selected' : ''}>📐 Giữ Vector gốc</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block font-semibold text-slate-600 mb-1">Resize khổ giấy:</label>
+                                    <select onchange="updateFileSetting('${item.id}', 'resizeMode', this.value)" class="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
+                                        <option value="A4" ${item.settings.resizeMode === 'A4' ? 'selected' : ''}>Khổ A4 (210×297 mm)</option>
+                                        <option value="A3" ${item.settings.resizeMode === 'A3' ? 'selected' : ''}>Khổ A3 (297×420 mm)</option>
+                                        <option value="PRESENTATION_169" ${item.settings.resizeMode === 'PRESENTATION_169' ? 'selected' : ''}>Thuyết trình 16:9</option>
+                                        <option value="PRESENTATION_43" ${item.settings.resizeMode === 'PRESENTATION_43' ? 'selected' : ''}>Thuyết trình 4:3</option>
+                                        <option value="half" ${item.settings.resizeMode === 'half' ? 'selected' : ''}>Giảm 50% kích thước</option>
+                                        <option value="scale75" ${item.settings.resizeMode === 'scale75' ? 'selected' : ''}>Giảm 25% kích thước</option>
+                                        <option value="original" ${item.settings.resizeMode === 'original' ? 'selected' : ''}>Giữ nguyên khổ gốc</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block font-semibold text-slate-600 mb-1">DPI & Chất lượng:</label>
+                                    <div class="flex gap-1.5">
+                                        <select onchange="updateFileSetting('${item.id}', 'dpi', this.value)" class="w-1/2 bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
+                                            <option value="72" ${item.settings.dpi === 72 ? 'selected' : ''}>72 DPI</option>
+                                            <option value="96" ${item.settings.dpi === 96 ? 'selected' : ''}>96 DPI</option>
+                                            <option value="120" ${item.settings.dpi === 120 ? 'selected' : ''}>120 DPI</option>
+                                            <option value="150" ${item.settings.dpi === 150 ? 'selected' : ''}>150 DPI</option>
+                                            <option value="200" ${item.settings.dpi === 200 ? 'selected' : ''}>200 DPI</option>
+                                            <option value="300" ${item.settings.dpi === 300 ? 'selected' : ''}>300 DPI</option>
+                                        </select>
+                                        <select onchange="updateFileSetting('${item.id}', 'quality', this.value)" class="w-1/2 bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
+                                            <option value="0.4" ${item.settings.quality === 0.4 ? 'selected' : ''}>CL 40%</option>
+                                            <option value="0.5" ${item.settings.quality === 0.5 ? 'selected' : ''}>CL 50%</option>
+                                            <option value="0.6" ${item.settings.quality === 0.6 ? 'selected' : ''}>CL 60%</option>
+                                            <option value="0.7" ${item.settings.quality === 0.7 ? 'selected' : ''}>CL 70%</option>
+                                            <option value="0.8" ${item.settings.quality === 0.8 ? 'selected' : ''}>CL 80%</option>
+                                            <option value="0.9" ${item.settings.quality === 0.9 ? 'selected' : ''}>CL 90%</option>
+                                            <option value="1.0" ${item.settings.quality === 1.0 ? 'selected' : ''}>CL 100%</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div>
-                                <label class="block font-semibold text-slate-600 mb-1">Resize khổ giấy:</label>
-                                <select onchange="updateFileSetting('${item.id}', 'resizeMode', this.value)" class="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
-                                    <option value="A4" ${item.settings.resizeMode === 'A4' ? 'selected' : ''}>Khổ A4 (210×297 mm)</option>
-                                    <option value="A3" ${item.settings.resizeMode === 'A3' ? 'selected' : ''}>Khổ A3 (297×420 mm)</option>
-                                    <option value="PRESENTATION_169" ${item.settings.resizeMode === 'PRESENTATION_169' ? 'selected' : ''}>Thuyết trình 16:9</option>
-                                    <option value="PRESENTATION_43" ${item.settings.resizeMode === 'PRESENTATION_43' ? 'selected' : ''}>Thuyết trình 4:3</option>
-                                    <option value="half" ${item.settings.resizeMode === 'half' ? 'selected' : ''}>Giảm 50% kích thước</option>
-                                    <option value="scale75" ${item.settings.resizeMode === 'scale75' ? 'selected' : ''}>Giảm 25% kích thước</option>
-                                    <option value="original" ${item.settings.resizeMode === 'original' ? 'selected' : ''}>Giữ nguyên khổ gốc</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label class="block font-semibold text-slate-600 mb-1">DPI & Chất lượng:</label>
-                                <div class="flex gap-1.5">
-                                    <select onchange="updateFileSetting('${item.id}', 'dpi', this.value)" class="w-1/2 bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
-                                        <option value="96" ${item.settings.dpi === 96 ? 'selected' : ''}>96 DPI</option>
-                                        <option value="150" ${item.settings.dpi === 150 ? 'selected' : ''}>150 DPI</option>
-                                        <option value="200" ${item.settings.dpi === 200 ? 'selected' : ''}>200 DPI</option>
-                                    </select>
-                                    <select onchange="updateFileSetting('${item.id}', 'quality', this.value)" class="w-1/2 bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
-                                        <option value="0.6" ${item.settings.quality === 0.6 ? 'selected' : ''}>CL 60%</option>
-                                        <option value="0.7" ${item.settings.quality === 0.7 ? 'selected' : ''}>CL 70%</option>
-                                        <option value="0.85" ${item.settings.quality === 0.85 ? 'selected' : ''}>CL 85%</option>
-                                    </select>
+                            <!-- Individual Advanced Toggles -->
+                            <div class="pt-2 border-t border-slate-200">
+                                <label class="block font-bold text-[11px] text-slate-700 mb-1.5">Tùy chọn Nâng cao cho file này:</label>
+                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-600">
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeAnnotations', this.checked)" ${item.settings.nitro?.removeAnnotations !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
+                                        <span>Xóa Ghi chú</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeLinks', this.checked)" ${item.settings.nitro?.removeLinks !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
+                                        <span>Xóa Links & Forms</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeJavaScripts', this.checked)" ${item.settings.nitro?.removeJavaScripts !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
+                                        <span>Xóa JavaScripts</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeBookmarks', this.checked)" ${item.settings.nitro?.removeBookmarks !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
+                                        <span>Xóa Bookmarks</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeAttachments', this.checked)" ${item.settings.nitro?.removeAttachments !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
+                                        <span>Xóa File đính kèm</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeThumbnails', this.checked)" ${item.settings.nitro?.removeThumbnails !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
+                                        <span>Xóa Thumbnails</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeUnusedObjects', this.checked)" ${item.settings.nitro?.removeUnusedObjects !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
+                                        <span>Dọn dẹp rác</span>
+                                    </label>
                                 </div>
                             </div>
                         </div>
@@ -774,8 +908,7 @@
             btn.classList.add('opacity-50', 'cursor-not-allowed');
 
             for (let item of filesQueue) {
-                if (item.status === 'completed') continue;
-
+                // Re-run for ALL files in queue (including already completed ones)
                 item.status = 'processing';
                 item.statusText = 'Đang xử lý...';
                 renderQueue();
@@ -804,11 +937,17 @@
                 // Full Rasterization to JPEG
                 outputPdfBytes = await processPdfWithRasterization(arrayBuffer, itemObj);
             } else if (itemObj.settings.preset === 'hybrid') {
-                // Hybrid mode: Rasterize background graphics to JPEG + Overlay crisp vector elements/pages
+                // Optimized Hybrid mode with background image downsampling
                 outputPdfBytes = await processPdfHybridMode(arrayBuffer, itemObj);
             } else {
-                // Pure Vector page scaling (Preserve vectors and stream structure)
+                // Pure Vector page scaling + Nitro cleans
                 outputPdfBytes = await processPdfVectorScaling(arrayBuffer, itemObj);
+            }
+
+            // Safety check: If output is bigger than input due to uncompressable streams, fallback to high-efficiency rasterization
+            if (outputPdfBytes.byteLength >= itemObj.file.size && itemObj.settings.preset !== 'super') {
+                console.warn("Kích thước file bị tăng lên, tiến hành nén tối ưu lại bằng Rasterize...");
+                outputPdfBytes = await processPdfWithRasterization(arrayBuffer, itemObj);
             }
 
             const outputBlob = new Blob([outputPdfBytes], { type: 'application/pdf' });
@@ -833,7 +972,7 @@
 
         // 1. Full Rasterization Mode
         async function processPdfWithRasterization(arrayBuffer, itemObj) {
-            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer.slice(0) });
             const pdfDoc = await loadingTask.promise;
             const numPages = pdfDoc.numPages;
 
@@ -873,73 +1012,133 @@
                 });
             }
 
-            return await newPdfDoc.save();
+            applyNitroPdfCleanups(newPdfDoc, itemObj.settings.nitro || getNitroOptionsFromUI());
+            return await newPdfDoc.save({ useObjectStreams: true });
         }
 
-        // 2. Hybrid Compression Mode (Compresses background to JPEG while embedding vector pages)
+        // Helper to map Vietnamese & non-WinAnsi text safely for PDF-lib Standard Fonts
+        function sanitizeTextForPdfLib(text) {
+            if (!text) return '';
+            const vietMap = {
+                'à':'a','á':'a','ả':'a','ã':'a','ạ':'a','ă':'a','ằ':'a','ắ':'a','ẳ':'a','ẵ':'a','ặ':'a','â':'a','ầ':'a','ấ':'a','ẩ':'a','ẫ':'a','ậ':'a',
+                'è':'e','é':'e','ẻ':'e','ẽ':'e','ẹ':'e','ê':'e','ề':'e','ế':'e','ể':'e','ễ':'e','ệ':'e',
+                'ì':'i','í':'i','ỉ':'i','ĩ':'i','ị':'i',
+                'ò':'o','ó':'o','ỏ':'o','õ':'o','ọ':'o','ô':'o','ồ':'o','ố':'o','ổ':'o','ỗ':'o','ộ':'o','ơ':'o','ờ':'o','ớ':'o','ở':'o','ỡ':'o','ợ':'o',
+                'ù':'u','ú':'u','ủ':'u','ũ':'u','ụ':'u','ư':'u','ừ':'u','ứ':'u','ử':'u','ữ':'u','ự':'u',
+                'ỳ':'y','ý':'y','ỷ':'y','ỹ':'y','ỵ':'y',
+                'đ':'d','Đ':'D',
+                'À':'A','Á':'A','Ả':'A','Ã':'A','Ạ':'A','Ă':'A','Ằ':'A','Ắ':'A','Ẳ':'A','Ẵ':'A','Ặ':'A','Â':'A','Ầ':'A','Ấ':'A','Ẩ':'A','Ẫ':'A','Ậ':'A',
+                'È':'E','É':'E','Ẻ':'E','Ẽ':'E','Ẹ':'E','Ê':'E','Ề':'E','Ế':'E','Ể':'E','Ễ':'E','Ệ':'E',
+                'Ì':'I','Í':'I','Ỉ':'I','Ĩ':'I','Ị':'I',
+                'Ò':'O','Ó':'O','Ỏ':'O','Õ':'O','Ọ':'O','Ô':'O','Ồ':'O','Ố':'O','Ổ':'O','Ỗ':'O','Ộ':'O','Ơ':'O','Ờ':'O','Ớ':'O','Ở':'O','Ỡ':'O','Ợ':'O',
+                'Ù':'U','Ú':'U','Ủ':'U','Ũ':'U','Ụ':'U','Ư':'U','Ừ':'U','Ứ':'U','Ử':'U','Ữ':'U','Ự':'U',
+                'Ỳ':'Y','Ý':'Y','Ỷ':'Y','Ỹ':'Y','Ỵ':'Y'
+            };
+            let res = '';
+            for (let i = 0; i < text.length; i++) {
+                const ch = text[i];
+                res += vietMap[ch] || ch;
+            }
+            return res.replace(/[^\x20-\x7E]/g, '?');
+        }
+
+        // 2. Hybrid Mode: Flatten all background vectors & artwork into 1 image + Keep text layer selectable
         async function processPdfHybridMode(arrayBuffer, itemObj) {
-            const pdfjsDoc = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
-            const srcPdfLib = await PDFLib.PDFDocument.load(arrayBuffer);
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer.slice(0) });
+            const pdfDoc = await loadingTask.promise;
+            const numPages = pdfDoc.numPages;
+
             const newPdfDoc = await PDFLib.PDFDocument.create();
-            
-            const numPages = pdfjsDoc.numPages;
+            const fontHelvetica = await newPdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
             const scaleFactor = itemObj.settings.dpi / 72;
 
             for (let pageNum = 1; pageNum <= numPages; pageNum++) {
                 itemObj.progress = Math.round((pageNum / numPages) * 100);
-                itemObj.statusText = `Chế độ Hybrid trang ${pageNum}/${numPages}...`;
+                itemObj.statusText = `Nén phẳng nền & quét chữ trang ${pageNum}/${numPages}...`;
                 updateItemProgress(itemObj);
 
-                // Render background canvas at compressed quality
-                const page = await pdfjsDoc.getPage(pageNum);
+                const page = await pdfDoc.getPage(pageNum);
                 const viewport = page.getViewport({ scale: scaleFactor });
 
+                // 1. Render and flatten all background vector paths, overlapping graphics & layers into 1 JPEG image
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
+
                 ctx.fillStyle = '#FFFFFF';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
                 await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 
                 const imgDataUrl = canvas.toDataURL('image/jpeg', itemObj.settings.quality);
-                const jpgBytes = await fetch(imgDataUrl).then(res => res.arrayBuffer());
-                const embeddedJpg = await newPdfDoc.embedJpg(jpgBytes);
+                const jpgImageBytes = await fetch(imgDataUrl).then(res => res.arrayBuffer());
+                const embeddedJpg = await newPdfDoc.embedJpg(jpgImageBytes);
 
-                const origWidthPt = viewport.width / scaleFactor;
-                const origHeightPt = viewport.height / scaleFactor;
-                const { targetWidth, targetHeight, scaleRatio } = calculateTargetDimensions(origWidthPt, origHeightPt, itemObj.settings.resizeMode);
+                const unscaledViewport = page.getViewport({ scale: 1.0 });
+                const { targetWidth, targetHeight, scaleRatio } = calculateTargetDimensions(
+                    unscaledViewport.width, 
+                    unscaledViewport.height, 
+                    itemObj.settings.resizeMode
+                );
 
                 const newPage = newPdfDoc.addPage([targetWidth, targetHeight]);
-
-                // Draw compressed background image
+                
+                // Draw single flattened background graphic
                 newPage.drawImage(embeddedJpg, {
                     x: 0,
                     y: 0,
                     width: targetWidth,
-                    height: targetHeight,
-                    opacity: 0.92
+                    height: targetHeight
                 });
 
-                // Embed original vector page layer on top
-                const [embeddedVectorPage] = await newPdfDoc.embedPdf(srcPdfLib, [pageNum - 1]);
-                newPage.drawPage(embeddedVectorPage, {
-                    x: 0,
-                    y: 0,
-                    xScale: scaleRatio,
-                    yScale: scaleRatio,
-                    opacity: 1.0
-                });
+                // 2. Extract text positions and draw invisible selectable text layer on top
+                try {
+                    const textContent = await page.getTextContent();
+                    for (const item of textContent.items) {
+                        if (!item.str || item.str.trim().length === 0) continue;
+
+                        const tx = item.transform; // [a, b, c, d, e, f]
+                        const origX = tx[4] * scaleRatio;
+                        const origY = tx[5] * scaleRatio;
+                        
+                        const fontSize = Math.hypot(tx[0], tx[1]) * scaleRatio;
+                        if (fontSize <= 0) continue;
+
+                        const rad = Math.atan2(tx[1], tx[0]);
+                        const deg = rad * (180 / Math.PI);
+
+                        const safeStr = sanitizeTextForPdfLib(item.str);
+
+                        try {
+                            newPage.drawText(safeStr, {
+                                x: origX,
+                                y: origY,
+                                size: Math.max(4, fontSize),
+                                font: fontHelvetica,
+                                opacity: 0, // Invisible overlay for searchable and selectable text
+                                rotate: PDFLib.degrees(deg)
+                            });
+                        } catch (e) {
+                            // Ignore character rendering errors for edge cases
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Không trích xuất được lớp chữ cho trang " + pageNum, e);
+                }
             }
 
-            return await newPdfDoc.save();
+            applyNitroPdfCleanups(newPdfDoc, itemObj.settings.nitro || getNitroOptionsFromUI());
+            return await newPdfDoc.save({ useObjectStreams: true });
         }
 
         // 3. Pure Vector Scaling
         async function processPdfVectorScaling(arrayBuffer, itemObj) {
-            const srcPdf = await PDFLib.PDFDocument.load(arrayBuffer);
+            const srcPdf = await PDFLib.PDFDocument.load(arrayBuffer.slice(0), { ignoreEncryption: true });
             const newPdf = await PDFLib.PDFDocument.create();
+            
+            const nitroOpts = itemObj.settings.nitro || getNitroOptionsFromUI();
+            applyNitroPdfCleanups(srcPdf, nitroOpts);
             const pages = srcPdf.getPages();
 
             for (let i = 0; i < pages.length; i++) {
@@ -958,7 +1157,8 @@
                 newPdf.addPage(copiedPage);
             }
 
-            return await newPdf.save();
+            applyNitroPdfCleanups(newPdf, nitroOpts);
+            return await newPdf.save({ useObjectStreams: true });
         }
 
         // Helper to calculate target dimensions keeping aspect ratio
@@ -1093,7 +1293,7 @@
 
             // Render Original Canvas
             const origBuffer = await item.file.arrayBuffer();
-            const origPdf = await pdfjsLib.getDocument({ data: origBuffer }).promise;
+            const origPdf = await pdfjsLib.getDocument({ data: origBuffer.slice(0) }).promise;
             const origPage = await origPdf.getPage(currentPreviewPageNum);
             
             const canvasOrig = document.getElementById('preview-canvas-orig');
@@ -1115,7 +1315,7 @@
 
             // Render Processed Canvas
             const optBuffer = await item.processedBlob.arrayBuffer();
-            const optPdf = await pdfjsLib.getDocument({ data: optBuffer }).promise;
+            const optPdf = await pdfjsLib.getDocument({ data: optBuffer.slice(0) }).promise;
             const optPage = await optPdf.getPage(currentPreviewPageNum);
 
             const canvasOpt = document.getElementById('preview-canvas-opt');
@@ -1203,15 +1403,22 @@
         }
 
         function handleSliderMove(clientX) {
-            const box = document.getElementById('slider-box');
-            if (!box) return;
-            const rect = box.getBoundingClientRect();
+            const wrapper = document.getElementById('slider-canvas-wrapper');
+            if (!wrapper) return;
+            const rect = wrapper.getBoundingClientRect();
             let offsetX = clientX - rect.left;
             offsetX = Math.max(0, Math.min(offsetX, rect.width));
             const percentage = (offsetX / rect.width) * 100;
 
-            document.getElementById('slider-overlay-div').style.width = percentage + '%';
-            document.getElementById('slider-divider').style.left = percentage + '%';
+            const optCanvas = document.getElementById('slider-canvas-opt');
+            const divider = document.getElementById('slider-divider');
+
+            if (optCanvas) {
+                optCanvas.style.clipPath = `inset(0 calc(100% - ${percentage}%) 0 0)`;
+            }
+            if (divider) {
+                divider.style.left = percentage + '%';
+            }
         }
 
         function closePreviewModal() {
