@@ -1,1816 +1,1245 @@
 <!DOCTYPE html>
-<html lang="vi" class="h-full bg-slate-950 text-slate-200">
+<html lang="vi" class="h-full bg-slate-50">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Enhancer Image - ứng dụng AI hình ảnh</title>
-    
-    <!-- Tailwind CSS để tạo kiểu giao diện cực đẹp -->
+    <title>PDF Optimizer & Resizer Studio</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Font chữ Inter sắc nét -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
-    <!-- FontAwesome 6 để nạp đầy đủ biểu tượng sắc nét -->
+    <!-- PDFLib for PDF manipulation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <!-- PDF.js for rendering pages -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <!-- FontAwesome icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-    <!-- React & ReactDOM (Phiên bản 18) -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     
-    <!-- Babel Standalone để biên dịch JSX trực tiếp trên trình duyệt -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- Thư viện JSZip để nén ảnh thành file ZIP khi tải về hàng loạt -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
+        body { font-family: 'Inter', sans-serif; }
+        .drag-active { border-color: #3b82f6 !important; background-color: #eff6ff !important; }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Slider split view styles */
+        .slider-container {
+            position: relative;
+            user-select: none;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
         }
-        /* Hiệu ứng mờ nhấp nháy khi đang tải */
-        @keyframes shimmer-loader {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(150%); }
+        .slider-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            overflow: hidden;
+            border-right: 2px solid #3b82f6;
+            background-color: #ffffff;
+            z-index: 10;
         }
-        .animate-shimmer-loader {
-            animation: shimmer-loader 1.6s infinite linear;
+        .slider-divider-line {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background-color: #2563eb;
+            z-index: 20;
+            cursor: ew-resize;
         }
-        /* Custom thanh cuộn tối mịn */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+        .slider-handle-btn {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 36px;
+            height: 36px;
+            background-color: #2563eb;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+            z-index: 30;
+            cursor: ew-resize;
         }
-        ::-webkit-scrollbar-track {
-            background: #020617;
+
+        /* Pan Zoom Area */
+        .zoom-viewport {
+            cursor: grab;
+            transition: transform 0.05s ease-out;
+            transform-origin: center center;
         }
-        ::-webkit-scrollbar-thumb {
-            background: #1e293b;
-            border-radius: 9999px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #334155;
+        .zoom-viewport:active {
+            cursor: grabbing;
         }
     </style>
 </head>
-<body class="h-full flex flex-col justify-between">
-
-    <!-- DIV gốc để React mount giao diện vào -->
-    <div id="root" class="min-h-screen flex flex-col justify-between"></div>
-
-    <!-- Google Identity Services (Xử lý Đăng nhập OAuth 2.0) -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-
-    <!-- Kịch bản kịch bản lập trình chính bằng React + JSX thông qua Babel -->
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-
-        // Điền Client ID chính thức của anh Hải
-        const HARDCODED_CLIENT_ID = "1091667798732-1tjra4rm4ikf2u6c1upavnd6ot5qasld.apps.googleusercontent.com";
-        
-        // Cấu hình danh sách Scope chi tiết đã được anh add thành công trên GCP
-        const REQUESTED_SCOPES = "https://www.googleapis.com/auth/generative-language.retriever https://www.googleapis.com/auth/generative-language.tuning https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email";
-
-        function App() {
-            // imagesList: array of image objects with key details
-            const [imagesList, setImagesList] = useState([]);
-            const [activeImageId, setActiveImageId] = useState(null);
-            
-            const [isProcessing, setIsProcessing] = useState(false);
-            const [isBatchProcessing, setIsBatchProcessing] = useState(false);
-            
-            const [activeTools, setActiveTools] = useState(['enhance', 'cleanup']); // Default activates clean as well
-            const [expandDirections, setExpandDirections] = useState(['up', 'down', 'left', 'right']); // Default: All directions selected
-            const [aspectRatio, setAspectRatio] = useState('current'); // Default set to 'current'
-            const [upscaleOption, setUpscaleOption] = useState('original'); // Default size set to original
-            const [customPrompt, setCustomPrompt] = useState('');
-            const [error, setError] = useState('');
-            const [viewMode, setViewMode] = useState('split'); 
-            
-            const [sliderPosition, setSliderPosition] = useState(50);
-            const [zoomScale, setZoomScale] = useState(1);
-            const [historyList, setHistoryList] = useState([]); 
-
-            const [moodboardImages, setMoodboardImages] = useState([]); 
-            const [crossRefImages, setCrossRefImages] = useState([]); 
-
-            // Panning/dragging state for zoomed image view
-            const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
-            const [isPanning, setIsPanning] = useState(false);
-            const [panMode, setPanMode] = useState(false); // Toggle pan interaction
-            const panStart = useRef({ x: 0, y: 0 });
-
-            // Custom confirmation modal state
-            const [deleteConfirm, setDeleteConfirm] = useState({ show: false, type: null, id: null });
-
-            const fileInputRef = useRef(null);
-            const jsonInputRef = useRef(null);
-            const moodboardInputRef = useRef(null);
-            const crossRefInputRef = useRef(null);
-            
-            const isCancelBatchRef = useRef(false);
-
-            // --- Quản lý Trạng thái Đăng nhập Google & Đồng bộ đám mây ---
-            const [gisLoaded, setGisLoaded] = useState(false);
-            const [googleUser, setGoogleUser] = useState(null); // { name, email, picture, accessToken }
-            const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'error'
-            const [driveFileId, setDriveFileId] = useState(null);
-            const [isDemoMode, setIsDemoMode] = useState(false);
-
-            useEffect(() => {
-                const checkGis = setInterval(() => {
-                    if (window.google && window.google.accounts && window.google.accounts.oauth2) {
-                        setGisLoaded(true);
-                        clearInterval(checkGis);
-                    }
-                }, 500);
-
-                // Khôi phục dữ liệu cục bộ dự phòng (nếu có)
-                const localState = localStorage.getItem('ai_enhancer_local_backup');
-                if (localState) {
-                    try {
-                        const parsed = JSON.parse(localState);
-                        if (parsed.imagesList && parsed.imagesList.length > 0) {
-                            setImagesList(parsed.imagesList);
-                            setActiveImageId(parsed.imagesList[0].id);
-                        }
-                        if (parsed.historyList) {
-                            setHistoryList(parsed.historyList);
-                        }
-                    } catch (e) {
-                        console.error("Lỗi đọc dữ liệu khôi phục cũ:", e);
-                    }
-                }
-
-                return () => clearInterval(checkGis);
-            }, []);
-
-            // Nút dọn sạch toàn bộ dữ liệu ứng dụng về rỗng hoàn toàn
-            const askClearAllData = () => {
-                setDeleteConfirm({ show: true, type: 'clear_all', id: null });
-            };
-
-            const handleGoogleSignIn = () => {
-                if (!window.google?.accounts?.oauth2) {
-                    setError("Không thể nạp thư viện xác thực Google. Hãy mở ứng dụng bằng chế độ ẩn danh hoặc trên tab mới.");
-                    return;
-                }
-                setError('');
-
-                try {
-                    const client = window.google.accounts.oauth2.initTokenClient({
-                        client_id: HARDCODED_CLIENT_ID,
-                        scope: REQUESTED_SCOPES,
-                        callback: async (tokenResponse) => {
-                            if (tokenResponse.error) {
-                                setError(`Đăng nhập thất bại: ${tokenResponse.error_description || tokenResponse.error}`);
-                                return;
-                            }
-
-                            try {
-                                const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                                    headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
-                                });
-                                const userInfo = await userInfoRes.json();
-                                
-                                const userObj = {
-                                    name: userInfo.name,
-                                    email: userInfo.email,
-                                    picture: userInfo.picture,
-                                    accessToken: tokenResponse.access_token
-                                };
-
-                                setGoogleUser(userObj);
-                                setIsDemoMode(false);
-                                
-                                // Tải tự động dữ liệu từ Google Drive của bạn
-                                loadSessionFromDrive(tokenResponse.access_token);
-                            } catch (profileErr) {
-                                setError("Đăng nhập thành công nhưng không tìm thấy thông tin profile.");
-                            }
-                        },
-                    });
-                    client.requestAccessToken({ prompt: 'consent' });
-                } catch (err) {
-                    console.error(err);
-                    setError("Gặp lỗi trong lúc gọi cửa sổ ủy quyền tài khoản Google.");
-                }
-            };
-
-            const handleGoogleSignOut = () => {
-                setGoogleUser(null);
-                setDriveFileId(null);
-                setSyncStatus('idle');
-            };
-
-            const loadSessionFromDrive = async (token) => {
-                setSyncStatus('syncing');
-                try {
-                    const searchUrl = `https://www.googleapis.com/drive/v3/files?q=name='ai_enhancer_byoa_session.json'+and+trashed=false&fields=files(id,name)`;
-                    const searchRes = await fetch(searchUrl, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-                    const searchResult = await searchRes.json();
-                    const files = searchResult.files;
-
-                    if (files && files.length > 0) {
-                        const fileId = files[0].id;
-                        setDriveFileId(fileId);
-
-                        const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-                            headers: { Authorization: `Bearer ${token}` }
-                        });
-                        const data = await contentRes.json();
-
-                        if (data) {
-                            if (data.imagesList && data.imagesList.length > 0) {
-                                setImagesList(data.imagesList);
-                                setActiveImageId(data.activeImageId || data.imagesList[0].id);
-                            }
-                            if (data.historyList) {
-                                setHistoryList(data.historyList);
-                            }
-                            setSyncStatus('synced');
-                        }
-                    } else {
-                        setSyncStatus('idle');
-                    }
-                } catch (err) {
-                    console.error("Lỗi đồng bộ tải dữ liệu từ Drive:", err);
-                    setSyncStatus('error');
-                }
-            };
-
-            const syncSessionToDrive = async () => {
-                if (!googleUser) return;
-                setSyncStatus('syncing');
-
-                try {
-                    const stateToSave = {
-                        imagesList,
-                        activeImageId,
-                        historyList
-                    };
-
-                    let response;
-                    if (driveFileId) {
-                        response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, {
-                            method: 'PATCH',
-                            headers: {
-                                Authorization: `Bearer ${googleUser.accessToken}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(stateToSave)
-                        });
-                    } else {
-                        const metadata = {
-                            name: 'ai_enhancer_byoa_session.json',
-                            mimeType: 'application/json'
-                        };
-                        const boundary = 'ai_enhancer_boundary_token_xyz';
-                        const multipartBody = 
-                            `--${boundary}\r\n` +
-                            `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
-                            `${JSON.stringify(metadata)}\r\n` +
-                            `--${boundary}\r\n` +
-                            `Content-Type: application/json\r\n\r\n` +
-                            `${JSON.stringify(stateToSave)}\r\n` +
-                            `--${boundary}--`;
-
-                        response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-                            method: 'POST',
-                            headers: {
-                                Authorization: `Bearer ${googleUser.accessToken}`,
-                                'Content-Type': `multipart/related; boundary=${boundary}`
-                            },
-                            body: multipartBody
-                        });
-                    }
-
-                    const result = await response.json();
-                    if (result && result.id) {
-                        setDriveFileId(result.id);
-                        setSyncStatus('synced');
-                    } else {
-                        setSyncStatus('error');
-                    }
-                } catch (err) {
-                    console.error("Lỗi đồng bộ lưu trữ tệp:", err);
-                    setSyncStatus('error');
-                }
-            };
-
-            useEffect(() => {
-                if (imagesList.length > 0) {
-                    const localState = { imagesList, historyList };
-                    localStorage.setItem('ai_enhancer_local_backup', JSON.stringify(localState));
-                }
-            }, [imagesList, historyList]);
-
-            const tools = [
-                { id: 'enhance', name: 'Làm Nét', icon: 'fa-wand-magic-sparkles', desc: 'Tăng độ phân giải, cải thiện chi tiết ảnh' },
-                { id: 'beautify', name: 'Làm Đẹp AI', icon: 'fa-face-smile', desc: 'Làm mịn da chân dung tự nhiên' },
-                { id: 'cleanup', name: 'Xóa Chi Tiết', icon: 'fa-eraser', desc: 'Xóa logo, vật thể thừa, chữ gây nhiễu' },
-                { id: 'restore', name: 'Phục hồi ảnh cũ', icon: 'fa-rotate-left', desc: 'Khử hạt nhiễu, mờ vết trầy cũ' },
-                { id: 'sketch', name: 'Sketch to Render', icon: 'fa-paintbrush', desc: 'Bản vẽ phác thảo thành render thực' },
-                { id: 'expand', name: 'Mở rộng hình', icon: 'fa-expand', desc: 'Mở rộng khung viền ngoài (Outpainting)' }
-            ];
-
-            const selectImage = (id) => {
-                setActiveImageId(id);
-                const img = imagesList.find(i => i.id === id);
-                if (img) {
-                    setActiveTools(img.activeTools || ['enhance']);
-                    setUpscaleOption(img.upscaleOption || 'original');
-                    setExpandDirections(img.expandDirections || ['up', 'down', 'left', 'right']);
-                    setAspectRatio(img.aspectRatio || 'current');
-                    setCustomPrompt(img.customPrompt || '');
-                    setMoodboardImages(img.moodboardImages || []);
-                    setCrossRefImages(img.crossRefImages || []);
-                    setZoomScale(1);
-                    setPanOffset({ x: 0, y: 0 });
-                }
-            };
-
-            const updateActiveImageProp = (key, value) => {
-                setImagesList(prev => prev.map(img => {
-                    if (img.id === activeImageId) {
-                        return { ...img, [key]: value };
-                    }
-                    return img;
-                }));
-            };
-
-            const getDimensionsForImg = (img) => {
-                if (!img) return { width: 0, height: 0 };
-                let w = img.width;
-                let h = img.height;
-                
-                const imgTools = img.activeTools || [];
-                const isExpand = imgTools.includes('expand');
-                const aspect = img.aspectRatio || 'current';
-
-                if (isExpand) {
-                    let targetRatio = w / h;
-                    if (aspect !== 'current') {
-                        const parts = aspect.split(':');
-                        if (parts.length === 2) {
-                            const ratioW = parseFloat(parts[0]);
-                            const ratioH = parseFloat(parts[1]);
-                            targetRatio = ratioW / ratioH;
-                        }
-                    }
-
-                    const currentRatio = w / h;
-                    if (currentRatio < targetRatio) {
-                        w = h * targetRatio;
-                    } else {
-                        h = w / targetRatio;
-                    }
-                }
-
-                const option = img.upscaleOption || 'original';
-
-                switch (option) {
-                    case '0.5x':
-                        return { width: Math.round(w * 0.5), height: Math.round(h * 0.5) };
-                    case '0.75x':
-                        return { width: Math.round(w * 0.75), height: Math.round(h * 0.75) };
-                    case '2x':
-                        return { width: Math.round(w * 2), height: Math.round(h * 2) };
-                    case '4x':
-                        return { width: Math.round(w * 4), height: Math.round(h * 4) };
-                    case '8x':
-                        return { width: Math.round(w * 8), height: Math.round(h * 8) };
-                    case 'fhd':
-                        return { width: 1920, height: 1080 };
-                    case 'fhd_p':
-                        return { width: 1080, height: 1920 };
-                    case '4k':
-                        return { width: 3840, height: 2160 };
-                    case '4k_p':
-                        return { width: 2160, height: 3840 };
-                    case 'original':
-                    default:
-                        return { width: Math.round(w), height: Math.round(h) };
-                }
-            };
-
-            const getTargetDimensions = () => {
-                const activeImg = imagesList.find(img => img.id === activeImageId);
-                return getDimensionsForImg(activeImg);
-            };
-
-            const targetDim = getTargetDimensions();
-
-            const handleImageUpload = (e) => {
-                const files = Array.from(e.target.files);
-                if (files.length === 0) return;
-
-                const newImages = [];
-                let loadedCount = 0;
-                const imageFiles = files.filter(f => f.type.startsWith('image/'));
-
-                if (imageFiles.length === 0) {
-                    setError('Vui lòng chọn tệp định dạng ảnh hợp lệ.');
-                    return;
-                }
-
-                imageFiles.forEach(file => {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        const img = new Image();
-                        img.onload = () => {
-                            const imgObj = {
-                                id: Date.now() + Math.random(),
-                                name: file.name,
-                                url: URL.createObjectURL(file),
-                                base64: event.target.result,
-                                mimeType: file.type,
-                                width: img.naturalWidth,
-                                height: img.naturalHeight,
-                                result: null,
-                                isProcessing: false,
-                                error: null,
-                                activeTools: ['enhance', 'cleanup'],
-                                upscaleOption: 'original',
-                                expandDirections: ['up', 'down', 'left', 'right'],
-                                aspectRatio: 'current',
-                                customPrompt: '',
-                                moodboardImages: [],
-                                crossRefImages: []
-                            };
-                            newImages.push(imgObj);
-                            loadedCount++;
-
-                            if (loadedCount === imageFiles.length) {
-                                setImagesList(prev => {
-                                    const updated = [...prev, ...newImages];
-                                    if (!activeImageId && updated.length > 0) {
-                                        setActiveImageId(updated[0].id);
-                                        setActiveTools(['enhance', 'cleanup']);
-                                        setUpscaleOption('original');
-                                    }
-                                    return updated;
-                                });
-                                setError('');
-                            }
-                        };
-                        img.onerror = () => {
-                            setError('Không thể đọc dữ liệu kích thước khung hình.');
-                        };
-                        img.src = event.target.result;
-                    };
-                    reader.readAsDataURL(file);
-                });
-            };
-
-            const askDeleteImage = (id, e) => {
-                e.stopPropagation();
-                setDeleteConfirm({ show: true, type: 'queue', id });
-            };
-
-            const askDeleteHistory = (id, e) => {
-                e.stopPropagation();
-                setDeleteConfirm({ show: true, type: 'history', id });
-            };
-
-            const deleteImage = (id) => {
-                setImagesList(prev => {
-                    const next = prev.filter(img => img.id !== id);
-                    if (activeImageId === id) {
-                        if (next.length > 0) {
-                            setActiveImageId(next[0].id);
-                        } else {
-                            setActiveImageId(null);
-                        }
-                    }
-                    return next;
-                });
-            };
-
-            const deleteHistoryItem = (id) => {
-                setHistoryList(prev => prev.filter(item => item.id !== id));
-            };
-
-            const handleMoodboardUpload = (e) => {
-                const files = Array.from(e.target.files);
-                files.forEach(file => {
-                    if (!file.type.startsWith('image/')) return;
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        const updatedRef = [
-                            ...moodboardImages, 
-                            { id: Date.now() + Math.random(), url: URL.createObjectURL(file), base64: event.target.result, mimeType: file.type }
-                        ];
-                        setMoodboardImages(updatedRef);
-                        updateActiveImageProp('moodboardImages', updatedRef);
-                    };
-                    reader.readAsDataURL(file);
-                });
-            };
-
-            const handleCrossRefUpload = (e) => {
-                const files = Array.from(e.target.files);
-                files.forEach(file => {
-                    if (!file.type.startsWith('image/')) return;
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        const updatedRef = [
-                            ...crossRefImages, 
-                            { id: Date.now() + Math.random(), url: URL.createObjectURL(file), base64: event.target.result, mimeType: file.type }
-                        ];
-                        setCrossRefImages(updatedRef);
-                        updateActiveImageProp('crossRefImages', updatedRef);
-                    };
-                    reader.readAsDataURL(file);
-                });
-            };
-
-            const removeMoodboardImage = (id) => {
-                const updated = moodboardImages.filter(img => img.id !== id);
-                setMoodboardImages(updated);
-                updateActiveImageProp('moodboardImages', updated);
-            };
-
-            const removeCrossRefImage = (id) => {
-                const updated = crossRefImages.filter(img => img.id !== id);
-                setCrossRefImages(updated);
-                updateActiveImageProp('crossRefImages', updated);
-            };
-
-            const triggerFileInput = () => {
-                fileInputRef.current?.click();
-            };
-
-            const toggleTool = (toolId) => {
-                setActiveTools(prev => {
-                    let next;
-                    if (toolId === 'sketch') {
-                        next = prev.includes('sketch') ? [] : ['sketch'];
-                    } else {
-                        if (prev.includes('sketch')) return prev;
-                        
-                        if (prev.includes(toolId)) {
-                            next = prev.filter(id => id !== toolId);
-                        } else {
-                            next = [...prev, toolId];
-                            if (toolId === 'enhance' && !next.includes('cleanup')) {
-                                next.push('cleanup');
-                            }
-                            if (toolId === 'restore') {
-                                const extras = ['enhance', 'cleanup', 'beautify'];
-                                extras.forEach(t => {
-                                    if (!next.includes(t)) {
-                                        next.push(t);
-                                    }
-                                });
-                            }
-                        }
-                    }
-                    updateActiveImageProp('activeTools', next);
-                    return next;
-                });
-            };
-
-            const toggleExpandDirection = (dirId) => {
-                setExpandDirections(prev => {
-                    let next;
-                    const allDirs = ['up', 'down', 'left', 'right'];
-                    if (dirId === 'all') {
-                        const isAll = allDirs.every(d => prev.includes(d));
-                        next = isAll ? ['up', 'down'] : allDirs;
-                    } else {
-                        if (prev.includes(dirId)) {
-                            next = prev.length > 1 ? prev.filter(d => d !== dirId) : prev;
-                        } else {
-                            next = [...prev, dirId];
-                        }
-                    }
-                    updateActiveImageProp('expandDirections', next);
-                    return next;
-                });
-            };
-
-            const handleDropdownUpscaleChange = (e) => {
-                const value = e.target.value;
-                setUpscaleOption(value);
-                updateActiveImageProp('upscaleOption', value);
-            };
-
-            const resizeImageToTarget = (srcBase64, targetW, targetH) => {
-                return new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = targetW;
-                        canvas.height = targetH;
-                        const ctx = canvas.getContext('2d');
-                        if (!ctx) {
-                            reject(new Error("Không khởi tạo được bộ lọc Canvas 2D."));
-                            return;
-                        }
-                        ctx.imageSmoothingEnabled = true;
-                        ctx.imageSmoothingQuality = 'high';
-                        ctx.drawImage(img, 0, 0, targetW, targetH);
-                        resolve(canvas.toDataURL('image/png'));
-                    };
-                    img.onerror = () => reject(new Error("Lỗi tải tệp ảnh đầu ra."));
-                    img.src = srcBase64;
-                });
-            };
-
-            const fetchWithRetry = async (url, options, retries = 5) => {
-                const delays = [1000, 2000, 4000, 8000, 16000];
-                for (let i = 0; i < retries; i++) {
-                    try {
-                        const response = await fetch(url, options);
-                        if (!response.ok) {
-                            const errText = await response.text();
-                            throw new Error(`HTTP Error ${response.status}: ${errText}`);
-                        }
-                        return await response.json();
-                    } catch (e) {
-                        if (i === retries - 1) throw e;
-                        await new Promise(res => setTimeout(res, delays[i]));
-                    }
-                }
-            };
-
-            const processSingleImage = async (targetId) => {
-                const imgToProcess = imagesList.find(img => img.id === targetId);
-                if (!imgToProcess) return;
-
-                setImagesList(prev => prev.map(img => {
-                    if (img.id === targetId) return { ...img, isProcessing: true, error: null };
-                    return img;
-                }));
-
-                // Nếu đang dùng chế độ Demo Offline hoặc chưa đăng nhập
-                if (isDemoMode || !googleUser) {
-                    await new Promise(res => setTimeout(res, 3000));
-                    
-                    const canvas = document.createElement('canvas');
-                    canvas.width = imgToProcess.width;
-                    canvas.height = imgToProcess.height;
-                    const ctx = canvas.getContext('2d');
-                    const demoImg = new Image();
-                    
-                    demoImg.src = imgToProcess.url;
-                    await new Promise((resolve) => {
-                        demoImg.onload = () => {
-                            ctx.filter = 'contrast(1.1) saturate(1.05) brightness(1.02)';
-                            ctx.drawImage(demoImg, 0, 0);
-                            resolve();
-                        }
-                    });
-
-                    const demoResult = canvas.toDataURL('image/png');
-                    setImagesList(prev => prev.map(img => {
-                        if (img.id === targetId) {
-                            return { ...img, result: demoResult, isProcessing: false, error: null };
-                        }
-                        return img;
-                    }));
-                    return;
-                }
-
-                try {
-                    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent`;
-
-                    const tDim = getDimensionsForImg(imgToProcess);
-                    let instructions = [];
-                    const imgTools = imgToProcess.activeTools || ['enhance'];
-                    const imgUpscale = imgToProcess.upscaleOption || 'original';
-                    const imgExpandDirs = imgToProcess.expandDirections || ['up', 'down', 'left', 'right'];
-                    const imgAspect = imgToProcess.aspectRatio || 'current';
-                    const imgPrompt = imgToProcess.customPrompt || '';
-                    const imgMoodboards = imgToProcess.moodboardImages || [];
-                    const imgCrossRefs = imgToProcess.crossRefImages || [];
-
-                    if (!imgTools.includes('expand')) {
-                        instructions.push("CRITICAL REQUIREMENT: Do NOT outpaint, do NOT expand, do NOT crop, and do NOT add any new outer borders to the image. Keep the exact visual boundaries, composition, framing, and aspect ratio of the original image.");
-                    }
-                    if (imgTools.includes('enhance') || imgUpscale !== 'original') {
-                        instructions.push(`Enhance details, sharpen textures, remove noise/blur, and super-resolve this image. Make it extremely crisp and clean, optimized for upscaling/downscaling to resolution (${tDim.width}x${tDim.height} pixels).`);
-                    }
-                    if (imgTools.includes('expand')) {
-                        let directionText = "in all directions";
-                        if (imgExpandDirs.length === 4) {
-                            directionText = "in all directions (top, bottom, left, and right)";
-                        } else {
-                            const translatedDirs = imgExpandDirs.map(d => {
-                                if (d === 'up') return "upward (to the top)";
-                                if (d === 'down') return "downward (to the bottom)";
-                                if (d === 'left') return "to the left side";
-                                if (d === 'right') return "to the right side";
-                                return "";
-                            }).filter(Boolean);
-                            directionText = `towards the following directions: ${translatedDirs.join(', ')}`;
-                        }
-                        const aspectLabel = imgAspect === 'current' ? 'its current ratio' : `${imgAspect} aspect ratio`;
-                        instructions.push(`Outpaint and expand the borders of this image seamlessly ${directionText} to adapt into a beautiful layout matching the ${aspectLabel}.`);
-                    }
-                    if (imgTools.includes('cleanup')) {
-                        instructions.push("Remove any text, watermarks, symbols, icons, or unnecessary objects from this image. Fill in the background seamlessly and naturally.");
-                    }
-                    if (imgTools.includes('restore')) {
-                        instructions.push("Perform advanced old photo restoration: repair scratches, remove vintage grain, recover faded colors, and optimize contrast.");
-                    }
-                    if (imgTools.includes('sketch')) {
-                        let sketchPrompt = "Convert this sketch or line drawing into a photorealistic modern architectural or spatial render with rich professional materials, beautiful dramatic environment lighting, and natural shadows.";
-                        if (imgMoodboards.length > 0) {
-                            sketchPrompt += " Integrate the style, material textures, colors, and interior design theme from the provided moodboard reference images.";
-                        }
-                        if (imgCrossRefs.length > 0) {
-                            sketchPrompt += " Crucially, cross-reference the details, layout, and structural features of the same space from the provided reference images. Maintain maximum spatial accuracy based on those reference images without altering the camera perspective and overall structural orientation of the main sketch.";
-                        }
-                        instructions.push(sketchPrompt);
-                    }
-                    if (imgTools.includes('beautify')) {
-                        instructions.push("Apply studio-quality portrait retouching: smoothly refine skin texture naturally, eliminate skin blemishes, enhance eyes contrast, optimize ambient lighting, and highlight facial aesthetics elegantly.");
-                    }
-
-                    let finalPrompt = "Please perform the following operations on the provided image:\n" + instructions.map(i => "- " + i).join("\n");
-                    if (imgPrompt.trim()) {
-                        finalPrompt += "\n\nAdditional instructions:\n" + imgPrompt.trim();
-                    }
-
-                    const base64DataOnly = imgToProcess.base64.split(',')[1];
-                    const payloadParts = [
-                        { text: finalPrompt },
-                        { inlineData: { mimeType: imgToProcess.mimeType, data: base64DataOnly } }
-                    ];
-
-                    imgMoodboards.forEach((mb, idx) => {
-                        payloadParts.push({ text: `[Moodboard reference image ${idx + 1} for design theme & colors]` });
-                        payloadParts.push({ inlineData: { mimeType: mb.mimeType, data: mb.base64.split(',')[1] } });
-                    });
-
-                    imgCrossRefs.forEach((cr, idx) => {
-                        payloadParts.push({ text: `[Spatial cross-reference angle image ${idx + 1} of the same space]` });
-                        payloadParts.push({ inlineData: { mimeType: cr.mimeType, data: cr.base64.split(',')[1] } });
-                    });
-
-                    const payload = {
-                        contents: [{ role: "user", parts: payloadParts }],
-                        generationConfig: { responseModalities: ["IMAGE"] }
-                    };
-
-                    const result = await fetchWithRetry(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${googleUser.accessToken}`
-                        },
-                        body: JSON.stringify(payload)
-                    });
-
-                    const responseParts = result.candidates?.[0]?.content?.parts;
-                    const imagePart = responseParts?.find(p => p.inlineData);
-                    
-                    if (imagePart && imagePart.inlineData && imagePart.inlineData.data) {
-                        const resultBase64 = `data:${imagePart.inlineData.mimeType || 'image/png'};base64,${imagePart.inlineData.data}`;
-                        const upscaledDataUrl = await resizeImageToTarget(resultBase64, tDim.width, tDim.height);
-                        
-                        setImagesList(prev => prev.map(img => {
-                            if (img.id === targetId) {
-                                return { ...img, result: upscaledDataUrl, isProcessing: false, error: null };
-                            }
-                            return img;
-                        }));
-
-                        const newHistoryItem = {
-                            id: Date.now() + Math.random(),
-                            original: imgToProcess,
-                            result: upscaledDataUrl,
-                            activeTools: [...imgTools],
-                            upscaleOption: imgUpscale,
-                            targetDim: { width: tDim.width, height: tDim.height },
-                            timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-                        };
-                        setHistoryList(prev => [newHistoryItem, ...prev]);
-                    } else {
-                        throw new Error("Không tìm thấy dữ liệu ảnh nâng cấp trả về từ máy chủ.");
-                    }
-
-                } catch (err) {
-                    console.error(err);
-                    setImagesList(prev => prev.map(img => {
-                        if (img.id === targetId) return { ...img, isProcessing: false, error: err.message || 'Lỗi xử lý API' };
-                        return img;
-                    }));
-                }
-            };
-
-            const processActiveImage = async () => {
-                if (!activeImageId) return;
-                setIsProcessing(true);
-                setError('');
-                try {
-                    await processSingleImage(activeImageId);
-                } catch (err) {
-                    setError("Gặp gián đoạn trong lúc xử lý ảnh đơn.");
-                } finally {
-                    setIsProcessing(false);
-                }
-            };
-
-            const processBatchAll = async () => {
-                if (imagesList.length === 0) return;
-                setIsBatchProcessing(true);
-                isCancelBatchRef.current = false;
-                setError('');
-
-                try {
-                    for (let i = 0; i < imagesList.length; i++) {
-                        if (isCancelBatchRef.current) {
-                            setError("Dừng xử lý khẩn cấp thành công.");
-                            break;
-                        }
-
-                        const currentImg = imagesList[i];
-                        if (!currentImg.result) {
-                            selectImage(currentImg.id);
-                            await new Promise(resolve => setTimeout(resolve, 200));
-                            
-                            if (isCancelBatchRef.current) {
-                                setError("Dừng xử lý khẩn cấp thành công.");
-                                break;
-                            }
-                            await processSingleImage(currentImg.id);
-                        }
-                    }
-                } catch (err) {
-                    setError("Có lỗi phát sinh trong hàng chờ xử lý.");
-                } finally {
-                    setIsBatchProcessing(false);
-                }
-            };
-
-            const stopBatchProcessing = () => {
-                isCancelBatchRef.current = true;
-                setIsBatchProcessing(false);
-            };
-
-            const saveProgressJSON = () => {
-                try {
-                    const progressData = {
-                        imagesList,
-                        activeImageId,
-                        historyList,
-                        activeTools,
-                        expandDirections,
-                        aspectRatio,
-                        upscaleOption,
-                        customPrompt,
-                        moodboardImages,
-                        crossRefImages
-                    };
-                    
-                    const blob = new Blob([JSON.stringify(progressData, null, 2)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = `AI_Enhancer_Progress_${new Date().toISOString().split('T')[0]}_${Date.now()}.json`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    setTimeout(() => URL.revokeObjectURL(url), 100);
-                } catch (err) {
-                    console.error("Lỗi xuất tệp JSON:", err);
-                    setError("Không thể lưu tiến trình: " + err.message);
-                }
-            };
-
-            const loadProgressJSON = (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    try {
-                        const parsed = JSON.parse(event.target.result);
-                        if (!parsed || typeof parsed !== 'object') {
-                            throw new Error("Dữ liệu tệp JSON không hợp lệ.");
-                        }
-
-                        if (Array.isArray(parsed.imagesList)) setImagesList(parsed.imagesList);
-                        if (parsed.activeImageId) setActiveImageId(parsed.activeImageId);
-                        if (Array.isArray(parsed.historyList)) setHistoryList(parsed.historyList);
-                        if (Array.isArray(parsed.activeTools)) setActiveTools(parsed.activeTools);
-                        if (Array.isArray(parsed.expandDirections)) setExpandDirections(parsed.expandDirections);
-                        if (parsed.aspectRatio) setAspectRatio(parsed.aspectRatio);
-                        if (parsed.upscaleOption) setUpscaleOption(parsed.upscaleOption);
-                        if (parsed.customPrompt !== undefined) setCustomPrompt(parsed.customPrompt);
-                        if (Array.isArray(parsed.moodboardImages)) setMoodboardImages(parsed.moodboardImages);
-                        if (Array.isArray(parsed.crossRefImages)) setCrossRefImages(parsed.crossRefImages);
-
-                        setZoomScale(1);
-                        setPanOffset({ x: 0, y: 0 });
-                        setError('');
-                    } catch (err) {
-                        console.error("Lỗi đọc tệp JSON:", err);
-                        setError("Lỗi nạp tệp tiến trình.");
-                    }
-                };
-                reader.readAsText(file);
-            };
-
-            const downloadResult = async () => {
-                const activeImg = imagesList.find(img => img.id === activeImageId);
-                if (!activeImg || !activeImg.result) return;
-                try {
-                    const response = await fetch(activeImg.result);
-                    const blob = await response.blob();
-                    const blobUrl = URL.createObjectURL(blob);
-                    
-                    const link = document.createElement('a');
-                    link.href = blobUrl;
-                    const tD = getDimensionsForImg(activeImg);
-                    link.download = `AI_Enhanced_${tD.width}x${tD.height}_${Date.now()}.png`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
-                } catch (e) {
-                    const link = document.createElement('a');
-                    link.href = activeImg.result;
-                    link.download = `AI_Enhanced_${Date.now()}.png`;
-                    link.click();
-                }
-            };
-
-            const downloadAllAsZip = async () => {
-                if (!window.JSZip) {
-                    setError("Thư viện ZIP chưa được tải đầy đủ.");
-                    return;
-                }
-
-                const processed = imagesList.filter(img => img.result);
-                if (processed.length === 0) {
-                    setError("Không có ảnh kết quả nào để tải.");
-                    return;
-                }
-
-                setIsProcessing(true);
-                try {
-                    const zip = new window.JSZip();
-                    const folder = zip.folder("AI_Enhanced_Images");
-
-                    for (let i = 0; i < processed.length; i++) {
-                        const img = processed[i];
-                        const response = await fetch(img.result);
-                        const blob = await response.blob();
-                        folder.file(`AI_Result_${i + 1}_${img.name}.png`, blob);
-                    }
-
-                    const content = await zip.generateAsync({ type: "blob" });
-                    const blobUrl = URL.createObjectURL(content);
-
-                    const link = document.createElement('a');
-                    link.href = blobUrl;
-                    link.download = `AI_Enhanced_Batch_${Date.now()}.zip`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                } catch (e) {
-                    setError("Lỗi tạo file nén ZIP: " + e.message);
-                } finally {
-                    setIsProcessing(false);
-                }
-            };
-
-            const loadHistoryItem = (item) => {
-                setImagesList(prev => {
-                    const exists = prev.some(img => img.id === item.original.id);
-                    if (exists) {
-                        return prev.map(img => {
-                            if (img.id === item.original.id) {
-                                return { ...img, result: item.result };
-                            }
-                            return img;
-                        });
-                    } else {
-                        return [...prev, { ...item.original, result: item.result }];
-                    }
-                });
-
-                setTimeout(() => {
-                    setActiveImageId(item.original.id);
-                    setActiveTools(item.activeTools);
-                    setUpscaleOption(item.upscaleOption);
-                    setExpandDirections(item.original.expandDirections || ['up', 'down', 'left', 'right']);
-                    setAspectRatio(item.original.aspectRatio || 'current');
-                    setViewMode('split');
-                    setZoomScale(1);
-                    setPanOffset({ x: 0, y: 0 });
-                    setError('');
-                }, 50);
-            };
-
-            const handlePointerDown = (e) => {
-                if (zoomScale <= 1) return;
-                if (viewMode === 'split' && !panMode) return;
-                
-                setIsPanning(true);
-                panStart.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
-                e.currentTarget.setPointerCapture(e.pointerId);
-            };
-
-            const handlePointerMove = (e) => {
-                if (!isPanning || zoomScale <= 1) return;
-                const newX = e.clientX - panStart.current.x;
-                const newY = e.clientY - panStart.current.y;
-                setPanOffset({ x: newX, y: newY });
-            };
-
-            const handlePointerUp = (e) => {
-                setIsPanning(false);
-                try {
-                    e.currentTarget.releasePointerCapture(e.pointerId);
-                } catch (err) {}
-            };
-
-            const resetZoomAndPan = () => {
-                setZoomScale(1);
-                setPanOffset({ x: 0, y: 0 });
-            };
-
-            const activeImage = imagesList.find(img => img.id === activeImageId);
-            const isProcessReady = activeTools.length > 0 || customPrompt.trim().length > 0;
-            const isSketchActive = activeTools.includes('sketch');
-
-            return (
-                <div className="flex-1 flex flex-col justify-between">
-                    
-                    {/* Header bar */}
-                    <header className="border-b border-slate-800 bg-slate-900/50 sticky top-0 z-10 backdrop-blur-md">
-                        <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-1.5 rounded-lg shadow-lg shadow-indigo-500/10">
-                                    <i className="fa-solid fa-sparkles text-white text-sm"></i>
-                                </div>
-                                <div>
-                                    <h1 className="text-sm sm:text-base font-bold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
-                                        AI Enhancer Image
-                                    </h1>
-                                    <p className="text-[10px] text-slate-500 font-medium tracking-wide">SIÊU PHÂN GIẢI & PHỤC HỒI CHI TIẾT</p>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={askClearAllData}
-                                    className="flex items-center gap-1.5 text-xs bg-slate-900 border border-red-950/45 hover:bg-red-950/20 text-red-400 font-semibold px-3 py-1.5 rounded-lg transition-all"
-                                    title="Xóa toàn bộ bộ nhớ cache, hàng đợi và bắt đầu lại sạch sẽ"
-                                >
-                                    <i className="fa-solid fa-trash-can"></i>
-                                    <span className="hidden sm:inline">Dọn sạch dữ liệu</span>
-                                </button>
-                                <button
-                                    onClick={saveProgressJSON}
-                                    className="flex items-center gap-1.5 text-xs bg-slate-900 border border-slate-800 hover:bg-slate-800 text-indigo-400 font-semibold px-3 py-1.5 rounded-lg transition-all"
-                                    title="Lưu toàn bộ tiến trình hiện tại thành tệp JSON"
-                                >
-                                    <i className="fa-solid fa-floppy-disk"></i>
-                                    <span className="hidden sm:inline">Lưu tiến trình</span>
-                                </button>
-                                <button
-                                    onClick={() => jsonInputRef.current?.click()}
-                                    className="flex items-center gap-1.5 text-xs bg-slate-900 border border-slate-800 hover:bg-slate-800 text-indigo-400 font-semibold px-3 py-1.5 rounded-lg transition-all"
-                                    title="Mở tệp JSON đã lưu để tiếp tục làm việc"
-                                >
-                                    <i className="fa-solid fa-folder-open"></i>
-                                    <span className="hidden sm:inline">Nạp tiến trình</span>
-                                </button>
-                                <input
-                                    type="file"
-                                    ref={jsonInputRef}
-                                    onChange={loadProgressJSON}
-                                    accept=".json"
-                                    className="hidden"
-                                />
-                            </div>
-                        </div>
-                    </header>
-
-                    {/* Google OAuth & Cloud Sync UI section */}
-                    <div className="bg-slate-900/40 border-b border-slate-800/80 py-2">
-                        <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-3 text-xs">
-                            
-                            <div className="flex items-center gap-2">
-                                {googleUser ? (
-                                    <>
-                                        <div className="w-6 h-6 rounded-full overflow-hidden border border-indigo-500/30">
-                                            <img src={googleUser.picture} alt="Profile" className="w-full h-full object-cover" />
-                                        </div>
-                                        <div className="leading-none">
-                                            <p className="text-[11px] font-semibold text-slate-200">{googleUser.name}</p>
-                                            <p className="text-[9px] text-slate-500">{googleUser.email}</p>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
-                                        <i className="fa-solid fa-cloud text-slate-500"></i>
-                                        <span>Hãy đăng nhập tài khoản Google để tự cấp quyền sử dụng hạn mức Gemini cá nhân miễn phí.</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                                {googleUser ? (
-                                    <>
-                                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/80 border border-slate-800 text-[10px] font-medium text-slate-300">
-                                            {syncStatus === 'syncing' && (
-                                                <>
-                                                    <i className="fa-solid fa-circle-notch animate-spin text-indigo-400"></i>
-                                                    <span>Đang sao lưu Drive...</span>
-                                                </>
-                                            )}
-                                            {syncStatus === 'synced' && (
-                                                <>
-                                                    <i className="fa-solid fa-cloud-arrow-up text-emerald-400"></i>
-                                                    <span className="text-emerald-400">Đã lưu Drive</span>
-                                                </>
-                                            )}
-                                            {syncStatus === 'idle' && (
-                                                <>
-                                                    <i className="fa-solid fa-cloud text-slate-400"></i>
-                                                    <span>Chưa đồng bộ</span>
-                                                </>
-                                            )}
-                                            {syncStatus === 'error' && (
-                                                <>
-                                                    <i className="fa-solid fa-triangle-exclamation text-red-400"></i>
-                                                    <span className="text-red-400">Lỗi sao lưu</span>
-                                                </>
-                                            )}
-                                        </div>
-
-                                        <button 
-                                            onClick={syncSessionToDrive}
-                                            disabled={syncStatus === 'syncing'}
-                                            className="flex items-center gap-1 text-[10px] bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/25 px-2.5 py-1 rounded-lg transition-all"
-                                        >
-                                            <i className="fa-solid fa-rotate"></i>
-                                            <span>Đồng bộ</span>
-                                        </button>
-
-                                        <button 
-                                            onClick={handleGoogleSignOut}
-                                            className="flex items-center gap-1 text-[10px] bg-slate-950 hover:bg-slate-850 text-slate-400 hover:text-white border border-slate-800 px-2 py-1 rounded-lg transition-all"
-                                        >
-                                            <i className="fa-solid fa-right-from-bracket"></i>
-                                            <span>Thoát</span>
-                                        </button>
-                                    </>
-                                ) : (
-                                    <div className="flex gap-1.5">
-                                        <button 
-                                            onClick={() => {
-                                                setIsDemoMode(true);
-                                                setError('');
-                                            }}
-                                            className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all ${isDemoMode ? 'bg-amber-500/15 border-amber-500 text-amber-400' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'}`}
-                                        >
-                                            Dùng thử Demo (Offline)
-                                        </button>
-                                        <button 
-                                            onClick={handleGoogleSignIn}
-                                            className="flex items-center gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-1.5 rounded-lg shadow-lg shadow-indigo-600/15 transition-all active:scale-[0.98]"
-                                        >
-                                            <i className="fa-brands fa-google"></i>
-                                            <span>Đăng nhập Google Drive</span>
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-
-                        </div>
-                    </div>
-
-                    {/* --- STREAMING_CHUNK: Thể hiện khu vực tải hình hoặc chỉnh sửa --- */}
-                    <main className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 py-4 w-full flex-1">
-                        
-                        {error && (
-                            <div className="mb-4 bg-red-500/10 border border-red-500/50 rounded-xl p-3 flex items-start gap-2.5 text-red-400 text-xs">
-                                <i className="fa-solid fa-circle-exclamation shrink-0 mt-0.5 text-red-500"></i>
-                                <div>
-                                    <h3 className="font-semibold text-red-300">Lỗi hệ thống</h3>
-                                    <p>{error}</p>
-                                </div>
-                            </div>
-                        )}
-
-                        {imagesList.length === 0 ? (
-                            <div className="max-w-xl mx-auto mt-16">
-                                <div 
-                                    onClick={triggerFileInput}
-                                    className="border border-dashed border-slate-800 hover:border-indigo-500 bg-slate-900/30 hover:bg-slate-900/50 transition-all duration-300 rounded-2xl p-8 cursor-pointer flex flex-col items-center justify-center text-center group"
-                                >
-                                    <div className="bg-slate-800 group-hover:bg-indigo-500/10 p-3 rounded-full mb-4 transition-colors duration-300">
-                                        <i className="fa-solid fa-cloud-arrow-up text-slate-400 group-hover:text-indigo-400 text-xl"></i>
-                                    </div>
-                                    <h3 className="text-lg font-semibold mb-1">Tải ảnh của bạn lên</h3>
-                                    <p className="text-xs text-slate-500 mb-6 max-w-xs">
-                                        Hỗ trợ tải lên cùng lúc nhiều ảnh JPEG, PNG, WEBP để tăng nét hoặc xử lý hàng loạt.
-                                    </p>
-                                    <button className="bg-white text-slate-950 text-xs font-semibold px-4 py-2 rounded-full hover:bg-slate-200 transition-colors shadow-lg shadow-white/5">
-                                        Chọn các tệp từ thiết bị
-                                    </button>
-                                    <input 
-                                        type="file" 
-                                        ref={fileInputRef} 
-                                        onChange={handleImageUpload} 
-                                        accept="image/*" 
-                                        multiple
-                                        className="hidden" 
-                                    />
-                                </div>
-
-                                <div className="mt-6 flex flex-col items-center p-4 rounded-xl border border-slate-900 bg-slate-900/10">
-                                    <p className="text-xs text-slate-500 mb-2.5">Hoặc bạn muốn mở tiếp tiến trình đã làm trước đó?</p>
-                                    <button
-                                        onClick={() => jsonInputRef.current?.click()}
-                                        className="flex items-center gap-2 text-xs bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-semibold px-4 py-2 rounded-lg transition-all"
-                                    >
-                                        <i className="fa-solid fa-folder-open"></i>
-                                        Mở tệp lưu tiến trình (.json)
-                                    </button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                                
-                                {/* Left column: Viewer & List */}
-                                <div className="lg:col-span-8 flex flex-col gap-4">
-                                    
-                                    {/* Queue List */}
-                                    <div className="flex items-center gap-2 overflow-x-auto pb-1.5 border-b border-slate-900 bg-slate-900/20 p-2 rounded-xl">
-                                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider shrink-0 mr-1">Hình đợi:</span>
-                                        {imagesList.map((img, idx) => (
-                                            <div 
-                                                key={img.id}
-                                                onClick={() => selectImage(img.id)}
-                                                className={`group/thumb relative cursor-pointer rounded-lg overflow-hidden border transition-all shrink-0 w-11 h-11 ${
-                                                    activeImageId === img.id ? 'border-indigo-500 ring-1 ring-indigo-500/50' : 'border-slate-850 opacity-80 hover:opacity-100'
-                                                }`}
-                                            >
-                                                <img src={img.url} alt={`Thumb ${idx}`} className="w-full h-full object-cover" />
-                                                <button 
-                                                    onClick={(e) => askDeleteImage(img.id, e)}
-                                                    className="absolute top-0 right-0 bg-red-600/95 hover:bg-red-500 text-white p-0.5 rounded-bl-md opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-150 z-20"
-                                                    title="Xóa hình"
-                                                >
-                                                    <i className="fa-solid fa-trash text-[8px]"></i>
-                                                </button>
-
-                                                {img.result && (
-                                                    <div className="absolute bottom-0 right-0 bg-green-500 text-white p-0.5 rounded-tl-md">
-                                                        <i className="fa-solid fa-circle-check text-[8px]"></i>
-                                                    </div>
-                                                )}
-                                                {img.isProcessing && (
-                                                    <div className="absolute inset-0 bg-slate-950/60 flex items-center justify-center">
-                                                        <i className="fa-solid fa-circle-notch animate-spin text-indigo-400 text-xs"></i>
-                                                    </div>
-                                                )}
-                                                {img.error && (
-                                                    <div className="absolute inset-0 bg-red-950/60 flex items-center justify-center" title={img.error}>
-                                                        <i className="fa-solid fa-circle-exclamation text-red-400 text-xs"></i>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                        <button
-                                            onClick={() => fileInputRef.current?.click()}
-                                            className="w-11 h-11 rounded-lg border border-dashed border-slate-800 hover:border-indigo-500 bg-slate-950 flex flex-col items-center justify-center text-slate-500 hover:text-indigo-400 transition-all shrink-0"
-                                        >
-                                            <i className="fa-solid fa-plus text-xs"></i>
-                                        </button>
-                                    </div>
-
-                                    {/* Panel trình chiếu ảnh chính */}
-                                    <div className="flex flex-col bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden h-[calc(100vh-280px)] min-h-[500px] max-h-[750px]">
-                                        
-                                        {/* Viewer Header */}
-                                        <div className="px-3 py-2 border-b border-slate-800 flex flex-wrap items-center justify-between bg-slate-900/80 gap-2">
-                                            <div className="flex gap-1 bg-slate-950 rounded-lg p-0.5">
-                                                <button 
-                                                    onClick={() => setViewMode('split')}
-                                                    disabled={!activeImage?.result}
-                                                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'split' && activeImage?.result ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 disabled:opacity-50'}`}
-                                                >
-                                                    So sánh trượt
-                                                </button>
-                                                <button 
-                                                    onClick={() => setViewMode('original')}
-                                                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'original' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}
-                                                >
-                                                    Gốc
-                                                </button>
-                                                <button 
-                                                    onClick={() => setViewMode('result')}
-                                                    disabled={!activeImage?.result}
-                                                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'result' && activeImage?.result ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 disabled:opacity-50'}`}
-                                                >
-                                                    Kết quả
-                                                </button>
-                                            </div>
-
-                                            {/* Toggle drag function */}
-                                            {zoomScale > 1 && (
-                                                <button
-                                                    onClick={() => setPanMode(!panMode)}
-                                                    className={`px-2.5 py-1 text-xs font-medium rounded-md border flex items-center gap-1.5 transition-all ${
-                                                        panMode 
-                                                            ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400' 
-                                                            : 'bg-slate-950 border-slate-850 text-slate-400 hover:text-slate-200'
-                                                    }`}
-                                                    title="Bật kéo rê ảnh khi zoom lớn"
-                                                >
-                                                    <i className="fa-solid fa-hand text-[10px]"></i>
-                                                    <span>Rê chuột: {panMode ? "BẬT" : "TẤT"}</span>
-                                                </button>
-                                            )}
-
-                                            {/* Zoom scale controller */}
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex items-center justify-between bg-slate-950 p-0.5 rounded-lg border border-slate-800 w-[105px]">
-                                                    <button 
-                                                        onClick={() => setZoomScale(prev => Math.max(prev - 0.25, 0.5))}
-                                                        disabled={zoomScale <= 0.5}
-                                                        className="p-1 text-slate-400 hover:text-white disabled:opacity-30"
-                                                    >
-                                                        <i className="fa-solid fa-magnifying-glass-minus text-[10px]"></i>
-                                                    </button>
-                                                    <span className="text-[10px] font-semibold px-1 w-10 text-center text-slate-300">{Math.round(zoomScale * 100)}%</span>
-                                                    <button 
-                                                        onClick={() => setZoomScale(prev => Math.min(prev + 0.25, 3))}
-                                                        disabled={zoomScale >= 3}
-                                                        className="p-1 text-slate-400 hover:text-white disabled:opacity-30"
-                                                    >
-                                                        <i className="fa-solid fa-magnifying-glass-plus text-[10px]"></i>
-                                                    </button>
-                                                </div>
-
-                                                <button 
-                                                    onClick={resetZoomAndPan}
-                                                    style={{ visibility: zoomScale !== 1 ? 'visible' : 'hidden' }}
-                                                    className="text-[9px] bg-slate-950 hover:bg-slate-850 border border-slate-800 text-indigo-400 hover:text-indigo-300 font-semibold px-2 py-1 rounded transition-all"
-                                                >
-                                                    Reset 100%
-                                                </button>
-                                            </div>
-
-                                            {activeImage?.result && (
-                                                <button 
-                                                    onClick={downloadResult}
-                                                    className="flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 px-2.5 py-1 rounded-lg ml-auto"
-                                                >
-                                                    <i className="fa-solid fa-download"></i> Tải về
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        {/* Viewer Panel body */}
-                                        <div 
-                                            className={`flex-grow relative bg-slate-950 flex items-center justify-center p-2 overflow-hidden h-full ${
-                                                zoomScale > 1 && (viewMode !== 'split' || panMode) ? 'cursor-grab' : ''
-                                            }`}
-                                            onPointerDown={handlePointerDown}
-                                            onPointerMove={handlePointerMove}
-                                            onPointerUp={handlePointerUp}
-                                            onPointerLeave={handlePointerUp}
-                                        >
-                                            {(isProcessing || activeImage?.isProcessing) && (
-                                                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-sm">
-                                                    <i className="fa-solid fa-circle-notch animate-spin text-indigo-500 text-3xl mb-3"></i>
-                                                    <p className="text-sm font-medium text-white">AI đang phân tích & tái tạo chi tiết...</p>
-                                                    <p className="text-[10px] text-slate-400 mt-1">Mục tiêu: {targetDim.width} × {targetDim.height} px</p>
-                                                    <div className="w-48 h-1 bg-slate-800 rounded-full overflow-hidden mt-3 relative border border-slate-700/50">
-                                                        <div className="h-full w-2/5 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 rounded-full animate-shimmer-loader"></div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Bảng hiện lỗi trực quan để dễ dàng cấu hình và debug */}
-                                            {activeImage?.error && (
-                                                <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center">
-                                                    <div className="w-14 h-14 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mb-3">
-                                                        <i className="fa-solid fa-triangle-exclamation text-xl"></i>
-                                                    </div>
-                                                    <h3 className="text-sm font-bold text-red-400 mb-1">Không thể xử lý hình ảnh này</h3>
-                                                    <p className="text-[11px] text-slate-400 mb-3 max-w-sm">Mô tả chi tiết mã phản hồi lỗi hệ thống:</p>
-                                                    <div className="bg-slate-900 border border-slate-850 rounded-lg p-3 max-w-lg w-full mb-4 text-left overflow-auto max-h-[160px]">
-                                                        <p className="text-[10.5px] text-red-300 font-mono whitespace-pre-wrap break-words">{activeImage.error}</p>
-                                                    </div>
-                                                    <div className="flex gap-2.5">
-                                                        <button
-                                                            onClick={() => processSingleImage(activeImage.id)}
-                                                            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5"
-                                                        >
-                                                            <i className="fa-solid fa-rotate-right"></i> Thử lại
-                                                        </button>
-                                                        <button
-                                                            onClick={() => updateActiveImageProp('error', null)}
-                                                            className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
-                                                        >
-                                                            Bỏ qua lỗi
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            <div className="w-full h-full flex items-center justify-center overflow-hidden">
-                                                <div 
-                                                    className="relative w-full h-full flex items-center justify-center select-none"
-                                                    style={{ 
-                                                        transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
-                                                        transformOrigin: 'center center',
-                                                        transition: isPanning ? 'none' : 'transform 150s ease-out',
-                                                    }}
-                                                >
-                                                    {viewMode === 'split' && activeImage?.result ? (
-                                                        <div className="relative w-full h-full rounded-xl overflow-hidden flex items-center justify-center select-none border border-slate-850">
-                                                            <img src={activeImage.url} className="absolute inset-0 w-full h-full object-contain pointer-events-none" />
-                                                            <div 
-                                                                className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none"
-                                                                style={{ clipPath: `polygon(0 0, ${sliderPosition}% 0, ${sliderPosition}% 100%, 0 100%)` }}
-                                                            >
-                                                                <img src={activeImage.result} className="absolute inset-0 w-full h-full object-contain" />
-                                                            </div>
-                                                            <div className="absolute top-0 bottom-0 w-0.5 bg-indigo-500 cursor-ew-resize z-10" style={{ left: `${sliderPosition}%` }}>
-                                                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center border border-white text-xs">
-                                                                    <i className="fa-solid fa-arrows-left-right"></i>
-                                                                </div>
-                                                            </div>
-                                                            <input 
-                                                                type="range" 
-                                                                min="0" 
-                                                                max="100" 
-                                                                value={sliderPosition} 
-                                                                onChange={(e) => setSliderPosition(Number(e.target.value))} 
-                                                                className={`absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-20 ${panMode ? 'pointer-events-none' : ''}`}
-                                                            />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="relative w-full h-full flex items-center justify-center">
-                                                            <span className="absolute top-1.5 left-1.5 z-10 bg-black/70 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded backdrop-blur-md">
-                                                                {viewMode === 'result' && activeImage?.result ? `Đầu Ra: ${targetDim.width} × ${targetDim.height}` : `Ảnh Gốc: ${activeImage?.width} × ${activeImage?.height}`}
-                                                            </span>
-                                                            <img src={viewMode === 'result' && activeImage?.result ? activeImage.result : activeImage?.url} className="w-full h-full object-contain rounded-lg pointer-events-none" />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Lịch sử hoạt động */}
-                                    {historyList.length > 0 && (
-                                        <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-                                            <h3 className="font-semibold text-white text-xs mb-2 flex items-center gap-1.5">
-                                                <i className="fa-solid fa-clock-rotate-left text-indigo-400"></i> Lịch sử hoạt động
-                                            </h3>
-                                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 max-h-[140px] overflow-y-auto">
-                                                {historyList.map(item => (
-                                                    <div 
-                                                        key={item.id}
-                                                        onClick={() => loadHistoryItem(item)}
-                                                        className="group relative cursor-pointer rounded-lg overflow-hidden border border-slate-850 hover:border-indigo-500 bg-slate-950"
-                                                    >
-                                                        <img src={item.result} className="w-full h-12 object-cover opacity-75" />
-                                                        <button 
-                                                            onClick={(e) => askDeleteHistory(item.id, e)}
-                                                            className="absolute top-0 right-0 bg-red-600 text-white p-0.5 rounded-bl-md opacity-0 group-hover:opacity-100 z-20"
-                                                        >
-                                                            <i className="fa-solid fa-trash text-[8px]"></i>
-                                                        </button>
-                                                        <div className="p-1 text-[8px] text-slate-400 text-center">{item.targetDim.width}x{item.targetDim.height}</div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                </div>
-
-                                {/* Right column: AI controls & settings */}
-                                <div className="lg:col-span-4 flex flex-col gap-3.5">
-                                    
-                                    {/* Output resolution selection */}
-                                    <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-                                        <h3 className="text-xs font-semibold flex items-center gap-1.5 text-white mb-2.5">
-                                            <i className="fa-solid fa-expand text-indigo-400"></i> Kích Thước Đầu Ra
-                                        </h3>
-                                        <select
-                                            value={upscaleOption}
-                                            onChange={handleDropdownUpscaleChange}
-                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                        >
-                                            <option value="original">Giữ Nguyên Tỉ Lệ (Mặc định)</option>
-                                            <option value="0.5x">Giảm Một Nửa (0.5x - Dành cho ảnh lớn)</option>
-                                            <option value="0.75x">Giảm Nhẹ (0.75x - Dành cho ảnh lớn)</option>
-                                            <option value="2x">Nhân Đôi (2x)</option>
-                                            <option value="4x">Nhân Bốn (4x Ultra)</option>
-                                            <option value="8x">Nhân Tám (8x Super HD)</option>
-                                            <option value="fhd">Full HD Khung Ngang (1920 × 1080)</option>
-                                            <option value="fhd_p">Full HD Khung Đứng (1080 × 1920)</option>
-                                            <option value="4k">Chuẩn 4K UHD Khung Ngang (3840 × 2160)</option>
-                                            <option value="4k_p">Chuẩn 4K UHD Khung Đứng (2160 × 3840)</option>
-                                        </select>
-                                    </div>
-
-                                    {/* Tools Selection panel */}
-                                    <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
-                                        <h3 className="text-xs font-semibold flex items-center gap-1.5 text-white mb-3">
-                                            <i className="fa-solid fa-wand-magic-sparkles text-indigo-400"></i> Các Tính Năng AI
-                                        </h3>
-                                        
-                                        <div className="grid grid-cols-2 gap-2 mb-3">
-                                            {tools.map(tool => {
-                                                const isActive = activeTools.includes(tool.id);
-                                                const isGrayedOut = isSketchActive && tool.id !== 'sketch';
-                                                
-                                                return (
-                                                    <button
-                                                        key={tool.id}
-                                                        onClick={() => toggleTool(tool.id)}
-                                                        disabled={isGrayedOut}
-                                                        className={`flex flex-col items-start p-2 rounded-xl border text-left transition-all ${isGrayedOut ? 'opacity-30 cursor-not-allowed bg-slate-950/40' : isActive ? 'bg-indigo-500/10 border-indigo-500/50 ring-1 ring-indigo-500' : 'bg-slate-950 border-slate-850 hover:border-slate-700'}`}
-                                                    >
-                                                        <div className="flex justify-between w-full mb-1">
-                                                            <i className={`fa-solid ${tool.icon} ${isActive ? 'text-indigo-400' : 'text-slate-400'} text-xs`}></i>
-                                                            {isActive && <i className="fa-solid fa-circle-check text-indigo-500 text-[10px]"></i>}
-                                                        </div>
-                                                        <span className="text-[10px] font-semibold leading-tight">{tool.name}</span>
-                                                        <span className="text-[8px] text-slate-500 mt-0.5 line-clamp-1">{tool.desc}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-
-                                        {/* Expand Options config */}
-                                        {activeTools.includes('expand') && (
-                                            <div className="mb-3 p-2 bg-slate-950 rounded-xl border border-slate-850 space-y-2">
-                                                <div>
-                                                    <label className="block text-[8px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Tỉ Lệ Khung Hình Mới:</label>
-                                                    <div className="mb-1.5">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setAspectRatio('current');
-                                                                updateActiveImageProp('aspectRatio', 'current');
-                                                            }}
-                                                            className={`w-full py-1.5 px-2.5 rounded border text-[10px] font-bold transition-all text-center flex items-center justify-center gap-1.5 ${aspectRatio === 'current' ? 'bg-indigo-500/15 border-indigo-500 text-indigo-300' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
-                                                        >
-                                                            <i className="fa-solid fa-image"></i>
-                                                            Tỉ Lệ Hiện Tại (Mặc định)
-                                                        </button>
-                                                    </div>
-                                                    <div className="grid grid-cols-4 gap-1">
-                                                        {['1:1', '16:9', '9:16', '4:3'].map(r => (
-                                                            <button
-                                                                key={r}
-                                                                onClick={() => {
-                                                                    setAspectRatio(r);
-                                                                    updateActiveImageProp('aspectRatio', r);
-                                                                }}
-                                                                className={`p-1 rounded border text-[9px] font-semibold text-center ${aspectRatio === r ? 'bg-indigo-500/15 border-indigo-500 text-indigo-300' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
-                                                            >
-                                                                {r}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                <div>
-                                                    <label className="block text-[8px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Hướng Muốn Mở Rộng (Chọn đồng thời):</label>
-                                                    <div className="grid grid-cols-5 gap-1">
-                                                        {[
-                                                            { id: 'all', label: 'Tất cả', icon: 'fa-up-down-left-right' },
-                                                            { id: 'up', label: 'Lên trên', icon: 'fa-arrow-up' },
-                                                            { id: 'down', label: 'Xuống dưới', icon: 'fa-arrow-down' },
-                                                            { id: 'left', label: 'Sang trái', icon: 'fa-arrow-left' },
-                                                            { id: 'right', label: 'Sang phải', icon: 'fa-arrow-right' },
-                                                        ].map((dir) => {
-                                                            const isDirActive = dir.id === 'all' 
-                                                                ? ['up', 'down', 'left', 'right'].every(d => expandDirections.includes(d))
-                                                                : expandDirections.includes(dir.id);
-
-                                                            return (
-                                                                <button
-                                                                    key={dir.id}
-                                                                    type="button"
-                                                                    onClick={() => toggleExpandDirection(dir.id)}
-                                                                    className={`flex flex-col items-center justify-center p-1 rounded border text-[8px] font-medium transition-all ${isDirActive ? 'bg-indigo-500/10 border-indigo-500 text-indigo-300' : 'bg-slate-900 border-slate-800 text-slate-400'}`}
-                                                                >
-                                                                    <i className={`fa-solid ${dir.icon} mb-1 text-[10px]`}></i>
-                                                                    <span className="truncate max-w-full text-[8px]">{dir.label.split(' ')[0]}</span>
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Sketch to Render Options */}
-                                        {activeTools.includes('sketch') && (
-                                            <div className="mb-3 p-2 bg-slate-950 rounded-xl border border-slate-850 space-y-3">
-                                                <div>
-                                                    <label className="block text-[8px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Moodboard Tham Khảo (Max 4)</label>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {moodboardImages.map(mb => (
-                                                            <div key={mb.id} className="relative w-10 h-10 rounded border border-slate-800 overflow-hidden group/thumb">
-                                                                <img src={mb.url} className="w-full h-full object-cover" />
-                                                                <button 
-                                                                    onClick={() => removeMoodboardImage(mb.id)}
-                                                                    className="absolute inset-0 bg-red-600/80 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center"
-                                                                >
-                                                                    <i className="fa-solid fa-trash text-white text-[10px]"></i>
-                                                                </button>
-                                                            </div>
-                                                        ))}
-                                                        {moodboardImages.length < 4 && (
-                                                            <button 
-                                                                onClick={() => moodboardInputRef.current?.click()}
-                                                                className="w-10 h-10 border border-dashed border-slate-800 rounded flex items-center justify-center text-slate-500 hover:text-indigo-400 bg-slate-900"
-                                                            >
-                                                                <i className="fa-solid fa-plus text-[10px]"></i>
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    <input type="file" ref={moodboardInputRef} onChange={handleMoodboardUpload} accept="image/*" multiple className="hidden" />
-                                                </div>
-
-                                                <div>
-                                                    <label className="block text-[8px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Ảnh Đối Chiếu Không Gian (Max 4)</label>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {crossRefImages.map(cr => (
-                                                            <div key={cr.id} className="relative w-10 h-10 rounded border border-slate-800 overflow-hidden group/thumb">
-                                                                <img src={cr.url} className="w-full h-full object-cover" />
-                                                                <button 
-                                                                    onClick={() => removeCrossRefImage(cr.id)}
-                                                                    className="absolute inset-0 bg-red-600/80 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center"
-                                                                >
-                                                                    <i className="fa-solid fa-trash text-white text-[10px]"></i>
-                                                                </button>
-                                                            </div>
-                                                        ))}
-                                                        {crossRefImages.length < 4 && (
-                                                            <button 
-                                                                onClick={() => crossRefInputRef.current?.click()}
-                                                                className="w-10 h-10 border border-dashed border-slate-800 rounded flex items-center justify-center text-slate-500 hover:text-indigo-400 bg-slate-900"
-                                                            >
-                                                                <i className="fa-solid fa-plus text-[10px]"></i>
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    <input type="file" ref={crossRefInputRef} onChange={handleCrossRefUpload} accept="image/*" multiple className="hidden" />
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <div className="mb-3">
-                                            <textarea 
-                                                value={customPrompt}
-                                                onChange={(e) => {
-                                                    setCustomPrompt(e.target.value);
-                                                    updateActiveImageProp('customPrompt', e.target.value);
-                                                }}
-                                                placeholder="Mô tả thêm yêu cầu (Ví dụ: Thêm chi tiết, đổi màu áo...)"
-                                                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 resize-none h-14"
-                                            />
-                                        </div>
-
-                                        {/* Bảng nút thực thi */}
-                                        <div className="space-y-1.5">
-                                            <button 
-                                                onClick={processActiveImage}
-                                                disabled={isProcessing || isBatchProcessing || !isProcessReady}
-                                                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold py-2 px-4 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 active:scale-[0.98]"
-                                            >
-                                                <i className="fa-solid fa-wand-magic-sparkles"></i>
-                                                <span>Xử lý hình hiện tại</span>
-                                            </button>
-
-                                            {imagesList.length > 1 && (
-                                                isBatchProcessing ? (
-                                                    <button 
-                                                        onClick={stopBatchProcessing}
-                                                        className="w-full bg-red-600 hover:bg-red-500 text-white text-xs font-semibold py-2 px-4 rounded-xl flex items-center justify-center gap-1.5 active:scale-[0.98] animate-pulse"
-                                                    >
-                                                        <i className="fa-solid fa-triangle-exclamation"></i>
-                                                        <span>Dừng xử lý khẩn cấp</span>
-                                                    </button>
-                                                ) : (
-                                                    <button 
-                                                        onClick={processBatchAll}
-                                                        className="w-full bg-slate-950 hover:bg-slate-850 text-indigo-400 border border-indigo-500/30 text-xs font-semibold py-2 px-4 rounded-xl flex items-center justify-center gap-1.5 active:scale-[0.98]"
-                                                    >
-                                                        <i className="fa-solid fa-play"></i>
-                                                        <span>Làm hàng loạt ({imagesList.filter(img => !img.result).length} ảnh còn lại)</span>
-                                                    </button>
-                                                )
-                                            )}
-
-                                            {imagesList.filter(img => img.result).length > 0 && (
-                                                <button 
-                                                    onClick={downloadAllAsZip}
-                                                    className="w-full bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold py-1.5 px-4 rounded-xl flex items-center justify-center gap-1.5"
-                                                >
-                                                    <i className="fa-solid fa-file-zipper"></i>
-                                                    <span>Nén ZIP tải xuống toàn bộ ({imagesList.filter(img => img.result).length} ảnh)</span>
-                                                </button>
-                                            )}
-                                        </div>
-
-                                    </div>
-
-                                </div>
-
-                            </div>
-                        )}
-
-                    </main>
-
-                    {/* Hộp thoại xác nhận tùy chỉnh an toàn (Custom confirmation modal) */}
-                    {deleteConfirm.show && (
-                        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                            <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-sm w-full p-5 shadow-2xl relative">
-                                <div className="text-red-500 bg-red-500/10 w-10 h-10 rounded-full flex items-center justify-center mb-3">
-                                    <i className="fa-solid fa-trash text-lg"></i>
-                                </div>
-                                <h3 className="text-sm font-bold text-white mb-1.5">
-                                    {deleteConfirm.type === 'clear_all' ? 'Xác nhận dọn sạch ứng dụng' : 'Xác nhận xóa hình'}
-                                </h3>
-                                <p className="text-xs text-slate-400 mb-4 leading-normal">
-                                    {deleteConfirm.type === 'clear_all'
-                                        ? 'Bạn có chắc chắn muốn dọn sạch toàn bộ dữ liệu lưu trữ tạm thời? Thao tác này sẽ giải phóng hàng đợi, xóa sạch bộ nhớ cache và làm trống app hoàn toàn.'
-                                        : deleteConfirm.type === 'queue' 
-                                        ? 'Bạn có chắc chắn muốn xóa hình ảnh này khỏi hàng đợi? Tiến trình chưa làm cho hình này sẽ bị hủy.' 
-                                        : 'Bạn có chắc chắn muốn xóa bản ghi này khỏi lịch sử đã làm? Điều này không làm ảnh hưởng tới hàng đợi.'}
-                                </p>
-                                <div className="flex justify-end gap-2 text-xs font-semibold">
-                                    <button 
-                                        onClick={() => setDeleteConfirm({ show: false, type: null, id: null })}
-                                        className="px-4 py-2 text-slate-300 bg-slate-800 hover:bg-slate-750 rounded-lg transition-colors"
-                                    >
-                                        Hủy bỏ
-                                    </button>
-                                    <button 
-                                        onClick={() => {
-                                            if (deleteConfirm.type === 'clear_all') {
-                                                localStorage.removeItem('ai_enhancer_local_backup');
-                                                setImagesList([]);
-                                                setActiveImageId(null);
-                                                setHistoryList([]);
-                                                setError('');
-                                                setMoodboardImages([]);
-                                                setCrossRefImages([]);
-                                            } else if (deleteConfirm.type === 'queue') {
-                                                deleteImage(deleteConfirm.id);
-                                            } else if (deleteConfirm.type === 'history') {
-                                                deleteHistoryItem(deleteConfirm.id);
-                                            }
-                                            setDeleteConfirm({ show: false, type: null, id: null });
-                                        }}
-                                        className="px-4 py-2 text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors"
-                                    >
-                                        Đồng ý
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
+<body class="min-h-full text-slate-800 flex flex-col justify-between antialiased">
+
+    <!-- Header Navbar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+                    <i class="fa-solid fa-file-pdf text-xl"></i>
                 </div>
-            );
-        }
+                <div>
+                    <h1 class="font-bold text-lg text-slate-900 leading-tight">PDF Optimizer & Resizer Studio</h1>
+                    <p class="text-xs text-slate-500">Tối ưu dung lượng PDF & Đổi kích thước khổ giấy chuẩn bài nộp</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <button onclick="openHelpModal()" class="text-slate-600 hover:text-blue-600 p-2 rounded-lg hover:bg-slate-100 transition flex items-center gap-1.5 text-xs font-semibold" title="Hướng dẫn">
+                    <i class="fa-solid fa-circle-question text-base"></i>
+                    <span>Hướng dẫn</span>
+                </button>
+            </div>
+        </div>
+    </header>
 
-        // Render ứng dụng React hoàn chỉnh
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Top Drop Zone (At the very top) -->
+        <div id="drop-zone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)" onclick="document.getElementById('file-input').click()" class="border-2 border-dashed border-blue-300 hover:border-blue-500 bg-white hover:bg-blue-50/50 rounded-2xl p-6 sm:p-8 text-center transition-all cursor-pointer shadow-sm relative group">
+            <input type="file" id="file-input" accept="application/pdf" multiple onchange="handleFileSelect(event)" class="hidden">
+            
+            <div class="w-16 h-16 rounded-2xl bg-blue-100 group-hover:bg-blue-200 text-blue-600 mx-auto flex items-center justify-center text-2xl transition mb-3 shadow-sm">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+            </div>
+
+            <h3 class="font-bold text-slate-800 text-base mb-1">Kéo & thả file PDF vào đây hoặc <span class="text-blue-600 underline">Chọn từ máy tính</span></h3>
+            <p class="text-xs text-slate-500 max-w-md mx-auto">Tải lên một hoặc nhiều file PDF bài tập, đồ án. Hệ thống tự động nhận diện kích thước thực tế.</p>
+            
+            <div class="flex flex-wrap items-center justify-center gap-4 mt-4 text-slate-500 text-xs font-medium">
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-500"></i> Nén file bài tập lớn</span>
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-500"></i> Đổi khổ A2/A3/A4 / Thuyết trình</span>
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-500"></i> Tự chọn nén Hybrid hoặc Vector</span>
+            </div>
+        </div>
+
+        <!-- Global Settings & Presets Control Panel -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
+                <h2 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-blue-600"></i> Cấu hình Mặc định (Áp dụng cho File)
+                </h2>
+                <div class="flex items-center gap-2">
+                    <button onclick="applyGlobalToAllFiles()" class="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrows-rotate"></i> Áp dụng cho tất cả file đã tải
+                    </button>
+                    <button onclick="resetGlobalSettings()" class="text-xs text-slate-500 hover:text-blue-600 underline px-2 py-1">
+                        Khôi phục mặc định
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <!-- Preset -->
+                <div>
+                    <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-1.5">Mức độ nén mặc định</label>
+                    <select id="global-preset" onchange="applyGlobalPreset()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="super" selected>⚡ Siêu Giảm (Nén toàn bộ - Khuyên dùng)</option>
+                        <option value="hybrid">🖼️ Nén Background sang hình, Giữ chữ Vector</option>
+                        <option value="balanced">⚖️ Cân bằng (Chỉ nén nhẹ ảnh gốc)</option>
+                        <option value="vector">📐 Giữ Vector gốc (Chỉ đổi kích thước giấy)</option>
+                    </select>
+                </div>
+
+                <!-- Resize option -->
+                <div>
+                    <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-1.5">Kích thước trang mặc định</label>
+                    <select id="global-resize" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="A4" selected>Chuyển về khổ A4 (210 × 297 mm)</option>
+                        <option value="A3">Chuyển về khổ A3 (297 × 420 mm)</option>
+                        <option value="PRESENTATION_169">Khổ Thuyết trình Slide (16:9 - 338 × 190 mm)</option>
+                        <option value="PRESENTATION_43">Khổ Thuyết trình Slide (4:3 - 254 × 190 mm)</option>
+                        <option value="half">Giảm 1/2 kích thước (50%)</option>
+                        <option value="scale75">Giảm 25% kích thước (75%)</option>
+                        <option value="original">Giữ nguyên khổ giấy gốc</option>
+                    </select>
+                </div>
+
+                <!-- Quality & DPI -->
+                <div>
+                    <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-1.5">Độ phân giải & Chất lượng</label>
+                    <div class="flex gap-2">
+                        <select id="global-dpi" class="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 font-medium text-slate-800">
+                            <option value="96">96 DPI (Rất nhẹ)</option>
+                            <option value="150" selected>150 DPI (Chuẩn nộp)</option>
+                            <option value="200">200 DPI (Sắc nét)</option>
+                        </select>
+                        <select id="global-quality" class="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 font-medium text-slate-800">
+                            <option value="60">CL 60% (Nén cao)</option>
+                            <option value="70" selected>CL 70% (Chuẩn)</option>
+                            <option value="85">CL 85% (Nét cao)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Queue & File Action Section -->
+        <div id="queue-container" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hidden flex-col">
+            <div class="p-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <h3 class="font-bold text-slate-800 text-sm">Danh sách File PDF đã tải lên</h3>
+                    <span id="file-count-tag" class="bg-blue-100 text-blue-700 text-xs font-semibold px-2.5 py-0.5 rounded-full">0 file</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="clearQueue()" class="text-xs text-rose-600 hover:bg-rose-50 px-2.5 py-1 rounded-lg transition font-medium flex items-center gap-1">
+                        <i class="fa-solid fa-trash-can"></i> Xóa tất cả
+                    </button>
+                </div>
+            </div>
+
+            <!-- File List -->
+            <div id="file-list" class="divide-y divide-slate-100 max-h-[600px] overflow-y-auto p-3 space-y-3">
+                <!-- Dynamic File Cards rendered here -->
+            </div>
+
+            <!-- Global Action Bar -->
+            <div class="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div class="text-xs text-slate-500 flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info text-blue-500"></i>
+                    <span id="total-stat-summary">Sẵn sàng tối ưu hóa.</span>
+                </div>
+
+                <button id="start-process-btn" onclick="processAllFiles()" class="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold px-6 py-2.5 rounded-xl shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition active:scale-95 text-xs sm:text-sm">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Bắt đầu Tối ưu & Resize tất cả
+                </button>
+            </div>
+        </div>
+
+        <!-- Output Summary -->
+        <div id="results-container" class="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-5 hidden space-y-4">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center text-lg shadow-sm flex-shrink-0">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-sm">Hoàn tất Tối ưu hóa & Resize!</h3>
+                        <p id="savings-summary-text" class="text-xs text-emerald-700 font-medium">Đã tiết kiệm dung lượng đáng kể.</p>
+                    </div>
+                </div>
+
+                <button id="download-all-btn" onclick="downloadAllProcessedFiles()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-1.5 transition">
+                    <i class="fa-solid fa-download"></i> Tải tất cả file đã tối ưu
+                </button>
+            </div>
+        </div>
+
+    </main>
 
     <!-- Footer -->
-    <footer class="w-full border-t border-slate-900/60 bg-slate-950/80 mt-10 py-6 text-center text-xs text-slate-500">
-        <div class="max-w-[1700px] mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2">
-            <p class="flex items-center gap-1">
-                <span>Built by:</span>
-                <span class="text-indigo-400 font-bold hover:text-indigo-300 transition-colors tracking-wide">
-                    Tran Quang Hải
-                </span>
-            </p>
-            <span class="hidden sm:inline text-slate-700">|</span>
-            <p class="text-[10px] text-slate-600">
-                © 2026 AI Enhancer Image. All Rights Reserved.
-            </p>
+    <footer class="bg-white border-t border-slate-200 py-4 mt-8">
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
+            <p class="font-medium text-slate-700">Built by: <span class="font-bold text-blue-600">Trần Quang Hải</span> - email: <a href="mailto:tranquanghai@tdtu.edu.vn" class="underline text-blue-600 hover:text-blue-800">tranquanghai@tdtu.edu.vn</a></p>
         </div>
     </footer>
 
+    <!-- Modal Preview & Comparison (Side-by-Side + Swipe Slider + Zoom/Pan) -->
+    <div id="preview-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-5">
+        <div class="bg-white rounded-2xl w-full max-w-6xl h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            <!-- Modal Header -->
+            <div class="p-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <div class="min-w-0 pr-2">
+                    <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2 truncate">
+                        <i class="fa-solid fa-eye text-blue-600"></i> Xem trước & So sánh Trang: <span id="modal-filename" class="text-blue-700 font-semibold truncate">--</span>
+                    </h3>
+                </div>
+                <button onclick="closePreviewModal()" class="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg text-lg flex-shrink-0">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <!-- Controls & Mode Selector Toolbar -->
+            <div class="px-4 py-2 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <!-- Page Navigation -->
+                <div class="flex items-center gap-2">
+                    <button id="btn-prev-page" onclick="changePreviewPage(-1)" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-chevron-left"></i> Trang trước
+                    </button>
+                    <span id="page-num-display" class="font-bold text-slate-700 px-1">Trang 1 / 1</span>
+                    <button id="btn-next-page" onclick="changePreviewPage(1)" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">
+                        Trang sau <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
+
+                <!-- View Mode Toggle (Side-by-side vs Slider) -->
+                <div class="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                    <button id="mode-btn-side" onclick="switchPreviewMode('side')" class="px-3 py-1 rounded-md font-semibold text-slate-700 transition bg-white shadow-sm">
+                        <i class="fa-solid fa-columns"></i> Song song
+                    </button>
+                    <button id="mode-btn-slider" onclick="switchPreviewMode('slider')" class="px-3 py-1 rounded-md font-semibold text-slate-500 hover:text-slate-800 transition">
+                        <i class="fa-solid fa-sliders"></i> Trượt so sánh
+                    </button>
+                </div>
+
+                <!-- Zoom & Pan Controls -->
+                <div class="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200">
+                    <button onclick="adjustZoom(-0.15)" class="w-7 h-7 bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 flex items-center justify-center font-bold" title="Thu nhỏ">
+                        <i class="fa-solid fa-minus text-xs"></i>
+                    </button>
+                    <span id="zoom-level-text" class="text-[11px] font-bold text-slate-700 w-12 text-center">100%</span>
+                    <button onclick="adjustZoom(0.15)" class="w-7 h-7 bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 flex items-center justify-center font-bold" title="Phóng to">
+                        <i class="fa-solid fa-plus text-xs"></i>
+                    </button>
+                    <button onclick="resetZoomAndPan()" class="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded text-[11px] font-semibold text-slate-600 ml-1" title="Khôi phục zoom">
+                        <i class="fa-solid fa-rotate-right"></i> Reset
+                    </button>
+                </div>
+
+                <div id="modal-file-status" class="text-slate-500 font-medium text-[11px] hidden md:block">--</div>
+            </div>
+
+            <!-- Modal Body Container -->
+            <div id="preview-scroll-wrapper" class="flex-1 overflow-hidden p-4 bg-slate-100 relative flex items-center justify-center select-none">
+                
+                <!-- View Container for Zooming and Panning -->
+                <div id="zoom-pan-viewport" class="zoom-viewport w-full h-full flex items-center justify-center">
+                    
+                    <!-- View Mode 1: Side-by-side -->
+                    <div id="view-side-by-side" class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-5xl h-full items-center">
+                        <!-- Original Canvas -->
+                        <div class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-col items-center max-h-full">
+                            <span class="text-xs font-bold text-slate-600 mb-2 flex items-center gap-1">
+                                <i class="fa-solid fa-file text-slate-400"></i> Trang gốc PDF
+                            </span>
+                            <div class="relative w-full flex-1 bg-slate-50 rounded border overflow-hidden flex items-center justify-center">
+                                <canvas id="preview-canvas-orig" class="max-w-full max-h-[58vh] object-contain"></canvas>
+                            </div>
+                            <div class="mt-2 text-center space-y-0.5">
+                                <div id="preview-dim-orig" class="text-xs font-semibold text-slate-700">Kích thước: -- × -- mm</div>
+                                <div id="preview-size-orig" class="text-[11px] text-slate-500">Dung lượng: --</div>
+                            </div>
+                        </div>
+
+                        <!-- Optimized Canvas -->
+                        <div class="bg-white p-3 rounded-xl shadow-sm border border-emerald-400 flex flex-col items-center max-h-full">
+                            <span class="text-xs font-bold text-emerald-600 mb-2 flex items-center gap-1">
+                                <i class="fa-solid fa-wand-magic-sparkles text-emerald-500"></i> Trang Tối ưu & Resize
+                            </span>
+                            <div class="relative w-full flex-1 bg-slate-50 rounded border overflow-hidden flex items-center justify-center">
+                                <canvas id="preview-canvas-opt" class="max-w-full max-h-[58vh] object-contain"></canvas>
+                            </div>
+                            <div class="mt-2 text-center space-y-0.5">
+                                <div id="preview-dim-opt" class="text-xs font-bold text-emerald-700">Kích thước: -- × -- mm</div>
+                                <div id="preview-size-opt" class="text-[11px] text-emerald-600 font-semibold">Dung lượng: --</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- View Mode 2: Swipe Slider Comparison (Overlay) -->
+                    <div id="view-slider-mode" class="hidden w-full max-w-3xl h-full flex flex-col items-center justify-center">
+                        <div id="slider-box" class="slider-container w-full h-[65vh] relative shadow-md">
+                            <!-- Base layer (Original PDF Canvas) -->
+                            <div class="w-full h-full flex items-center justify-center bg-white">
+                                <canvas id="slider-canvas-orig" class="max-w-full max-h-full object-contain"></canvas>
+                            </div>
+
+                            <!-- Overlay Layer (Optimized PDF Canvas) -->
+                            <div id="slider-overlay-div" class="slider-overlay flex items-center justify-center" style="width: 50%;">
+                                <div id="slider-opt-canvas-wrapper" class="w-full h-full flex items-center justify-center bg-white">
+                                    <canvas id="slider-canvas-opt" class="max-w-full max-h-full object-contain"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Divider line and Handle -->
+                            <div id="slider-divider" class="slider-divider-line" style="left: 50%;">
+                                <div class="slider-handle-btn">
+                                    <i class="fa-solid fa-arrows-left-right text-xs"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-3 flex items-center justify-between w-full text-xs font-medium px-2">
+                            <span class="text-slate-600 flex items-center gap-1"><i class="fa-solid fa-arrow-left"></i> File Gốc (Trái)</span>
+                            <span class="text-blue-600 font-bold">Kéo thanh trượt để so sánh trực tiếp</span>
+                            <span class="text-emerald-600 flex items-center gap-1">File Tối ưu (Phải) <i class="fa-solid fa-arrow-right"></i></span>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Help -->
+    <div id="help-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-blue-50">
+                <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-graduation-cap text-blue-600"></i> Hướng dẫn nén & Resize PDF
+                </h3>
+                <button onclick="closeHelpModal()" class="text-slate-400 hover:text-slate-700 p-1 rounded-lg">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-3 text-xs text-slate-600 overflow-y-auto leading-relaxed">
+                <p class="font-bold text-slate-800 text-sm">Các gợi ý chọn cấu hình nén:</p>
+                <ul class="list-disc pl-5 space-y-2">
+                    <li><b>⚡ Siêu Giảm (Nén toàn bộ sang JPEG):</b> Phù hợp nhất cho file AutoCAD, Illustrator, Photoshop (>50MB). Toàn bộ nội dung được chuyển sang hình nén chuẩn 150 DPI, giảm dung lượng xuống dưới 5MB ngay lập tức.</li>
+                    <li><b>🖼️ Nén Background sang hình, Giữ chữ Vector (Hybrid):</b> Tự động nén chất lượng các hình ảnh đồ họa nặng ở phía sau, nhưng vẫn giữ nguyên font chữ và nét vẽ Vector ở mặt trước cho nét chữ không bao giờ bị nhòe.</li>
+                    <li><b>📐 Giữ Vector gốc:</b> Giữ nguyên chất lượng vector ban đầu, chỉ tính toán đổi kích thước khổ giấy (A2/A3 ➔ A4).</li>
+                    <li><b>Thuyết trình Slide:</b> Chọn kích thước <b>"Khổ Thuyết trình (16:9)"</b> để file hiển thị đẹp trên màn hình laptop/máy chiếu.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // PDF Constants
+        const PT_TO_MM = 0.352778;
+        
+        // Standard paper sizes long edges in points (72 pt = 1 inch)
+        const TARGET_LONG_EDGES = {
+            A4: 841.89,                      // 297 mm
+            A3: 1190.55,                     // 420 mm
+            PRESENTATION_169: 960.0,         // 16:9 Slide Screen (width ~ 338.7mm)
+            PRESENTATION_43: 720.0,          // 4:3 Slide Screen (width ~ 254mm)
+        };
+
+        // Global State
+        let filesQueue = [];
+        let currentPreviewFile = null;
+        let currentPreviewPageNum = 1;
+        let previewMode = 'side'; // 'side' or 'slider'
+
+        // Zoom & Pan state
+        let currentZoom = 1.0;
+        let panX = 0;
+        let panY = 0;
+        let isPanning = false;
+        let startPanX = 0;
+        let startPanY = 0;
+
+        // Slider interaction state
+        let isSliderDragging = false;
+
+        function detectPaperFormat(widthMm, heightMm) {
+            const minDim = Math.min(widthMm, heightMm);
+            const maxDim = Math.max(widthMm, heightMm);
+
+            if (Math.abs(minDim - 210) < 20 && Math.abs(maxDim - 297) < 20) return 'A4';
+            if (Math.abs(minDim - 297) < 20 && Math.abs(maxDim - 420) < 20) return 'A3';
+            if (Math.abs(minDim - 420) < 20 && Math.abs(maxDim - 594) < 20) return 'A2';
+            if (Math.abs(minDim - 594) < 20 && Math.abs(maxDim - 841) < 20) return 'A1';
+            if (Math.abs(minDim - 841) < 20 && Math.abs(maxDim - 1189) < 20) return 'A0';
+            
+            const ratio = maxDim / (minDim || 1);
+            if (Math.abs(ratio - (16/9)) < 0.15) return 'Màn hình 16:9';
+            if (Math.abs(ratio - (4/3)) < 0.15) return 'Màn hình 4:3';
+
+            return 'Tùy chỉnh';
+        }
+
+        function applyGlobalPreset() {
+            const preset = document.getElementById('global-preset').value;
+            const dpi = document.getElementById('global-dpi');
+            const quality = document.getElementById('global-quality');
+
+            if (preset === 'super') {
+                dpi.value = '150';
+                quality.value = '60';
+            } else if (preset === 'hybrid') {
+                dpi.value = '150';
+                quality.value = '70';
+            } else if (preset === 'balanced') {
+                dpi.value = '150';
+                quality.value = '75';
+            } else if (preset === 'vector') {
+                dpi.value = '200';
+                quality.value = '85';
+            }
+        }
+
+        function resetGlobalSettings() {
+            document.getElementById('global-preset').value = 'super';
+            document.getElementById('global-resize').value = 'A4';
+            document.getElementById('global-dpi').value = '150';
+            document.getElementById('global-quality').value = '70';
+        }
+
+        // Apply Global Config to ALL existing files in queue
+        function applyGlobalToAllFiles() {
+            if (filesQueue.length === 0) {
+                alert('Chưa có file nào trong danh sách!');
+                return;
+            }
+
+            const preset = document.getElementById('global-preset').value;
+            const resizeMode = document.getElementById('global-resize').value;
+            const dpi = parseInt(document.getElementById('global-dpi').value);
+            const quality = parseInt(document.getElementById('global-quality').value) / 100;
+
+            filesQueue.forEach(item => {
+                item.settings.preset = preset;
+                item.settings.resizeMode = resizeMode;
+                item.settings.dpi = dpi;
+                item.settings.quality = quality;
+            });
+
+            renderQueue();
+            alert(`Đã đồng bộ cấu hình mặc định cho tất cả ${filesQueue.length} file!`);
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            document.getElementById('drop-zone').classList.add('drag-active');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            document.getElementById('drop-zone').classList.remove('drag-active');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            document.getElementById('drop-zone').classList.remove('drag-active');
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                addFilesToQueue(e.dataTransfer.files);
+            }
+        }
+
+        function handleFileSelect(e) {
+            if (e.target.files && e.target.files.length > 0) {
+                addFilesToQueue(e.target.files);
+            }
+        }
+
+        async function addFilesToQueue(fileList) {
+            const globalResize = document.getElementById('global-resize').value;
+            const globalPreset = document.getElementById('global-preset').value;
+            const globalDpi = parseInt(document.getElementById('global-dpi').value);
+            const globalQuality = parseInt(document.getElementById('global-quality').value) / 100;
+
+            for (let file of fileList) {
+                if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                    alert(`File "${file.name}" không phải định dạng PDF!`);
+                    continue;
+                }
+
+                if (filesQueue.some(f => f.file.name === file.name && f.file.size === file.size)) continue;
+
+                let origWidthMm = 0;
+                let origHeightMm = 0;
+                let paperFormat = 'Đang phân tích...';
+                let pageCount = 0;
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    pageCount = pdfDoc.numPages;
+                    
+                    const firstPage = await pdfDoc.getPage(1);
+                    const viewport = firstPage.getViewport({ scale: 1.0 });
+                    origWidthMm = Math.round(viewport.width * PT_TO_MM);
+                    origHeightMm = Math.round(viewport.height * PT_TO_MM);
+                    paperFormat = detectPaperFormat(origWidthMm, origHeightMm);
+                } catch (err) {
+                    console.error("Không đọc được metadata PDF:", err);
+                }
+
+                const fileObj = {
+                    id: 'file_' + Math.random().toString(36).substr(2, 9),
+                    file: file,
+                    status: 'ready',
+                    progress: 0,
+                    statusText: 'Sẵn sàng',
+                    originalSizeFormatted: formatBytes(file.size),
+                    origWidthMm: origWidthMm,
+                    origHeightMm: origHeightMm,
+                    paperFormat: paperFormat,
+                    pageCount: pageCount,
+                    
+                    settings: {
+                        preset: globalPreset,
+                        resizeMode: globalResize,
+                        dpi: globalDpi,
+                        quality: globalQuality
+                    },
+
+                    processedBlob: null,
+                    processedSizeFormatted: '--',
+                    optWidthMm: '--',
+                    optHeightMm: '--',
+                    savings: 0,
+                    showSettingsPanel: false
+                };
+
+                filesQueue.push(fileObj);
+            }
+
+            renderQueue();
+        }
+
+        function removeFileFromQueue(id) {
+            filesQueue = filesQueue.filter(f => f.id !== id);
+            renderQueue();
+        }
+
+        function clearQueue() {
+            filesQueue = [];
+            renderQueue();
+            document.getElementById('results-container').classList.add('hidden');
+        }
+
+        function toggleFileSettings(id) {
+            const item = filesQueue.find(f => f.id === id);
+            if (item) {
+                item.showSettingsPanel = !item.showSettingsPanel;
+                renderQueue();
+            }
+        }
+
+        function updateFileSetting(id, key, value) {
+            const item = filesQueue.find(f => f.id === id);
+            if (!item) return;
+
+            if (key === 'preset') item.settings.preset = value;
+            else if (key === 'resizeMode') item.settings.resizeMode = value;
+            else if (key === 'dpi') item.settings.dpi = parseInt(value);
+            else if (key === 'quality') item.settings.quality = parseFloat(value);
+        }
+
+        function renderQueue() {
+            const container = document.getElementById('queue-container');
+            const listEl = document.getElementById('file-list');
+            const countTag = document.getElementById('file-count-tag');
+            const summaryText = document.getElementById('total-stat-summary');
+
+            if (filesQueue.length === 0) {
+                container.classList.add('hidden');
+                container.classList.remove('flex');
+                return;
+            }
+
+            container.classList.remove('hidden');
+            container.classList.add('flex');
+            countTag.innerText = `${filesQueue.length} file`;
+
+            let totalBytes = filesQueue.reduce((acc, f) => acc + f.file.size, 0);
+            summaryText.innerText = `Tổng dung lượng ban đầu: ${formatBytes(totalBytes)}`;
+
+            listEl.innerHTML = filesQueue.map((item) => `
+                <div class="p-3.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl transition flex flex-col gap-3">
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        
+                        <!-- File Meta Info -->
+                        <div class="flex items-start gap-3 min-w-0">
+                            <div class="w-10 h-10 rounded-xl ${item.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'} flex items-center justify-center flex-shrink-0 font-bold text-base mt-0.5">
+                                <i class="fa-solid ${item.status === 'completed' ? 'fa-file-circle-check' : 'fa-file-pdf'}"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <h4 class="text-xs font-bold text-slate-800 truncate max-w-xs sm:max-w-md">${escapeHtml(item.file.name)}</h4>
+                                    ${item.origWidthMm > 0 ? `
+                                        <span class="text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                            <i class="fa-solid fa-ruler-combined"></i> Khổ gốc: ${item.origWidthMm} × ${item.origHeightMm} mm (${item.paperFormat}) • ${item.pageCount} trang
+                                        </span>
+                                    ` : ''}
+                                </div>
+
+                                <div class="flex items-center gap-2 text-[11px] text-slate-500 mt-1 flex-wrap">
+                                    <span>Gốc: <b class="text-slate-700">${item.originalSizeFormatted}</b></span>
+                                    ${item.status === 'completed' ? `
+                                        <span>➔ Tối ưu: <b class="text-emerald-600">${item.processedSizeFormatted} (-${item.savings}%)</b></span>
+                                        <span>•</span>
+                                        <span class="text-emerald-600 font-bold">Kích thước mới: ${item.optWidthMm} × ${item.optHeightMm} mm</span>
+                                    ` : `
+                                        <span>•</span>
+                                        <span id="status-text-${item.id}" class="text-blue-600 font-medium">${item.statusText}</span>
+                                    `}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex items-center gap-2 w-full sm:w-auto justify-end flex-shrink-0">
+                            ${item.status === 'processing' ? `
+                                <div class="w-28 bg-slate-100 h-2 rounded-full overflow-hidden">
+                                    <div id="bar-${item.id}" class="bg-blue-600 h-full transition-all duration-300" style="width: ${item.progress}%"></div>
+                                </div>
+                            ` : ''}
+
+                            ${item.status === 'completed' ? `
+                                <button onclick="previewFileComparison('${item.id}')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1">
+                                    <i class="fa-solid fa-eye text-blue-600"></i> Xem thử
+                                </button>
+                                <button onclick="downloadSingleFile('${item.id}')" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1">
+                                    <i class="fa-solid fa-download"></i> Tải về
+                                </button>
+                            ` : ''}
+
+                            ${item.status !== 'processing' ? `
+                                <button onclick="toggleFileSettings('${item.id}')" class="text-xs border border-slate-200 hover:bg-slate-50 text-slate-700 px-2.5 py-1.5 rounded-lg transition font-medium flex items-center gap-1">
+                                    <i class="fa-solid fa-gear text-slate-500"></i> Cài đặt
+                                </button>
+
+                                <button onclick="processSingleFile('${item.id}')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1 shadow-sm">
+                                    <i class="fa-solid fa-bolt"></i> Tối ưu
+                                </button>
+
+                                <button onclick="removeFileFromQueue('${item.id}')" class="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg transition" title="Xóa">
+                                    <i class="fa-solid fa-xmark text-sm"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <!-- Individual File Settings Panel -->
+                    ${item.showSettingsPanel ? `
+                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mt-1">
+                            <div>
+                                <label class="block font-semibold text-slate-600 mb-1">Chế độ nén:</label>
+                                <select onchange="updateFileSetting('${item.id}', 'preset', this.value)" class="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
+                                    <option value="super" ${item.settings.preset === 'super' ? 'selected' : ''}>⚡ Siêu giảm (Nén toàn bộ JPEG)</option>
+                                    <option value="hybrid" ${item.settings.preset === 'hybrid' ? 'selected' : ''}>🖼️ Nén Background, Giữ chữ Vector</option>
+                                    <option value="balanced" ${item.settings.preset === 'balanced' ? 'selected' : ''}>⚖️ Cân bằng (Nén nhẹ ảnh gốc)</option>
+                                    <option value="vector" ${item.settings.preset === 'vector' ? 'selected' : ''}>📐 Giữ Vector gốc</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block font-semibold text-slate-600 mb-1">Resize khổ giấy:</label>
+                                <select onchange="updateFileSetting('${item.id}', 'resizeMode', this.value)" class="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
+                                    <option value="A4" ${item.settings.resizeMode === 'A4' ? 'selected' : ''}>Khổ A4 (210×297 mm)</option>
+                                    <option value="A3" ${item.settings.resizeMode === 'A3' ? 'selected' : ''}>Khổ A3 (297×420 mm)</option>
+                                    <option value="PRESENTATION_169" ${item.settings.resizeMode === 'PRESENTATION_169' ? 'selected' : ''}>Thuyết trình 16:9</option>
+                                    <option value="PRESENTATION_43" ${item.settings.resizeMode === 'PRESENTATION_43' ? 'selected' : ''}>Thuyết trình 4:3</option>
+                                    <option value="half" ${item.settings.resizeMode === 'half' ? 'selected' : ''}>Giảm 50% kích thước</option>
+                                    <option value="scale75" ${item.settings.resizeMode === 'scale75' ? 'selected' : ''}>Giảm 25% kích thước</option>
+                                    <option value="original" ${item.settings.resizeMode === 'original' ? 'selected' : ''}>Giữ nguyên khổ gốc</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block font-semibold text-slate-600 mb-1">DPI & Chất lượng:</label>
+                                <div class="flex gap-1.5">
+                                    <select onchange="updateFileSetting('${item.id}', 'dpi', this.value)" class="w-1/2 bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
+                                        <option value="96" ${item.settings.dpi === 96 ? 'selected' : ''}>96 DPI</option>
+                                        <option value="150" ${item.settings.dpi === 150 ? 'selected' : ''}>150 DPI</option>
+                                        <option value="200" ${item.settings.dpi === 200 ? 'selected' : ''}>200 DPI</option>
+                                    </select>
+                                    <select onchange="updateFileSetting('${item.id}', 'quality', this.value)" class="w-1/2 bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
+                                        <option value="0.6" ${item.settings.quality === 0.6 ? 'selected' : ''}>CL 60%</option>
+                                        <option value="0.7" ${item.settings.quality === 0.7 ? 'selected' : ''}>CL 70%</option>
+                                        <option value="0.85" ${item.settings.quality === 0.85 ? 'selected' : ''}>CL 85%</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        async function processSingleFile(id) {
+            const item = filesQueue.find(f => f.id === id);
+            if (!item) return;
+
+            item.status = 'processing';
+            item.statusText = 'Đang xử lý...';
+            renderQueue();
+
+            try {
+                await executeOptimizeFile(item);
+            } catch (err) {
+                console.error("Lỗi khi nén file:", err);
+                item.status = 'error';
+                item.statusText = 'Lỗi xử lý file!';
+            }
+
+            renderQueue();
+            updateGlobalResultsSummary();
+        }
+
+        async function processAllFiles() {
+            const btn = document.getElementById('start-process-btn');
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            for (let item of filesQueue) {
+                if (item.status === 'completed') continue;
+
+                item.status = 'processing';
+                item.statusText = 'Đang xử lý...';
+                renderQueue();
+
+                try {
+                    await executeOptimizeFile(item);
+                } catch (err) {
+                    console.error("Lỗi khi nén file:", err);
+                    item.status = 'error';
+                    item.statusText = 'Lỗi xử lý!';
+                }
+
+                renderQueue();
+            }
+
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            updateGlobalResultsSummary();
+        }
+
+        async function executeOptimizeFile(itemObj) {
+            const arrayBuffer = await itemObj.file.arrayBuffer();
+            let outputPdfBytes;
+
+            if (itemObj.settings.preset === 'super') {
+                // Full Rasterization to JPEG
+                outputPdfBytes = await processPdfWithRasterization(arrayBuffer, itemObj);
+            } else if (itemObj.settings.preset === 'hybrid') {
+                // Hybrid mode: Rasterize background graphics to JPEG + Overlay crisp vector elements/pages
+                outputPdfBytes = await processPdfHybridMode(arrayBuffer, itemObj);
+            } else {
+                // Pure Vector page scaling (Preserve vectors and stream structure)
+                outputPdfBytes = await processPdfVectorScaling(arrayBuffer, itemObj);
+            }
+
+            const outputBlob = new Blob([outputPdfBytes], { type: 'application/pdf' });
+            itemObj.processedBlob = outputBlob;
+            itemObj.status = 'completed';
+            itemObj.statusText = 'Hoàn thành';
+            itemObj.processedSizeFormatted = formatBytes(outputBlob.size);
+            
+            const savedPercent = Math.max(0, Math.round((1 - (outputBlob.size / itemObj.file.size)) * 100));
+            itemObj.savings = savedPercent;
+
+            try {
+                const optPdfDoc = await pdfjsLib.getDocument({ data: await outputBlob.arrayBuffer() }).promise;
+                const page1 = await optPdfDoc.getPage(1);
+                const vp = page1.getViewport({ scale: 1.0 });
+                itemObj.optWidthMm = Math.round(vp.width * PT_TO_MM);
+                itemObj.optHeightMm = Math.round(vp.height * PT_TO_MM);
+            } catch (e) {
+                console.error("Không đo được kích thước file đầu ra:", e);
+            }
+        }
+
+        // 1. Full Rasterization Mode
+        async function processPdfWithRasterization(arrayBuffer, itemObj) {
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+            const pdfDoc = await loadingTask.promise;
+            const numPages = pdfDoc.numPages;
+
+            const newPdfDoc = await PDFLib.PDFDocument.create();
+            const scaleFactor = itemObj.settings.dpi / 72;
+
+            for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                itemObj.progress = Math.round((pageNum / numPages) * 100);
+                itemObj.statusText = `Nén & rasterize trang ${pageNum}/${numPages}...`;
+                updateItemProgress(itemObj);
+
+                const page = await pdfDoc.getPage(pageNum);
+                const viewport = page.getViewport({ scale: scaleFactor });
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+                const imgDataUrl = canvas.toDataURL('image/jpeg', itemObj.settings.quality);
+                const jpgImageBytes = await fetch(imgDataUrl).then(res => res.arrayBuffer());
+                const embeddedJpg = await newPdfDoc.embedJpg(jpgImageBytes);
+
+                const { targetWidth, targetHeight } = calculateTargetDimensions(viewport.width / scaleFactor, viewport.height / scaleFactor, itemObj.settings.resizeMode);
+
+                const newPage = newPdfDoc.addPage([targetWidth, targetHeight]);
+                newPage.drawImage(embeddedJpg, {
+                    x: 0,
+                    y: 0,
+                    width: targetWidth,
+                    height: targetHeight
+                });
+            }
+
+            return await newPdfDoc.save();
+        }
+
+        // 2. Hybrid Compression Mode (Compresses background to JPEG while embedding vector pages)
+        async function processPdfHybridMode(arrayBuffer, itemObj) {
+            const pdfjsDoc = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
+            const srcPdfLib = await PDFLib.PDFDocument.load(arrayBuffer);
+            const newPdfDoc = await PDFLib.PDFDocument.create();
+            
+            const numPages = pdfjsDoc.numPages;
+            const scaleFactor = itemObj.settings.dpi / 72;
+
+            for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+                itemObj.progress = Math.round((pageNum / numPages) * 100);
+                itemObj.statusText = `Chế độ Hybrid trang ${pageNum}/${numPages}...`;
+                updateItemProgress(itemObj);
+
+                // Render background canvas at compressed quality
+                const page = await pdfjsDoc.getPage(pageNum);
+                const viewport = page.getViewport({ scale: scaleFactor });
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+                const imgDataUrl = canvas.toDataURL('image/jpeg', itemObj.settings.quality);
+                const jpgBytes = await fetch(imgDataUrl).then(res => res.arrayBuffer());
+                const embeddedJpg = await newPdfDoc.embedJpg(jpgBytes);
+
+                const origWidthPt = viewport.width / scaleFactor;
+                const origHeightPt = viewport.height / scaleFactor;
+                const { targetWidth, targetHeight, scaleRatio } = calculateTargetDimensions(origWidthPt, origHeightPt, itemObj.settings.resizeMode);
+
+                const newPage = newPdfDoc.addPage([targetWidth, targetHeight]);
+
+                // Draw compressed background image
+                newPage.drawImage(embeddedJpg, {
+                    x: 0,
+                    y: 0,
+                    width: targetWidth,
+                    height: targetHeight,
+                    opacity: 0.92
+                });
+
+                // Embed original vector page layer on top
+                const [embeddedVectorPage] = await newPdfDoc.embedPdf(srcPdfLib, [pageNum - 1]);
+                newPage.drawPage(embeddedVectorPage, {
+                    x: 0,
+                    y: 0,
+                    xScale: scaleRatio,
+                    yScale: scaleRatio,
+                    opacity: 1.0
+                });
+            }
+
+            return await newPdfDoc.save();
+        }
+
+        // 3. Pure Vector Scaling
+        async function processPdfVectorScaling(arrayBuffer, itemObj) {
+            const srcPdf = await PDFLib.PDFDocument.load(arrayBuffer);
+            const newPdf = await PDFLib.PDFDocument.create();
+            const pages = srcPdf.getPages();
+
+            for (let i = 0; i < pages.length; i++) {
+                itemObj.progress = Math.round(((i + 1) / pages.length) * 100);
+                itemObj.statusText = `Resize vector trang ${i+1}/${pages.length}...`;
+                updateItemProgress(itemObj);
+
+                const [copiedPage] = await newPdf.copyPages(srcPdf, [i]);
+                const { width, height } = copiedPage.getSize();
+                const { scaleRatio } = calculateTargetDimensions(width, height, itemObj.settings.resizeMode);
+
+                if (scaleRatio !== 1.0) {
+                    copiedPage.scale(scaleRatio, scaleRatio);
+                }
+
+                newPdf.addPage(copiedPage);
+            }
+
+            return await newPdf.save();
+        }
+
+        // Helper to calculate target dimensions keeping aspect ratio
+        function calculateTargetDimensions(origWidthPt, origHeightPt, mode) {
+            const origLongEdge = Math.max(origWidthPt, origHeightPt);
+            let scaleRatio = 1.0;
+
+            if (TARGET_LONG_EDGES[mode]) {
+                const targetLongEdge = TARGET_LONG_EDGES[mode];
+                scaleRatio = targetLongEdge / origLongEdge;
+            } else if (mode === 'half') {
+                scaleRatio = 0.5;
+            } else if (mode === 'scale75') {
+                scaleRatio = 0.75;
+            }
+
+            return {
+                targetWidth: origWidthPt * scaleRatio,
+                targetHeight: origHeightPt * scaleRatio,
+                scaleRatio: scaleRatio
+            };
+        }
+
+        function updateItemProgress(itemObj) {
+            const statusEl = document.getElementById(`status-text-${itemObj.id}`);
+            const barEl = document.getElementById(`bar-${itemObj.id}`);
+            if (statusEl) statusEl.innerText = itemObj.statusText;
+            if (barEl) barEl.style.width = itemObj.progress + '%';
+        }
+
+        function updateGlobalResultsSummary() {
+            const container = document.getElementById('results-container');
+            const completed = filesQueue.filter(f => f.status === 'completed');
+            
+            if (completed.length === 0) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            container.classList.remove('hidden');
+            let totalOrig = completed.reduce((acc, f) => acc + f.file.size, 0);
+            let totalOpt = completed.reduce((acc, f) => acc + f.processedBlob.size, 0);
+            let totalSaved = Math.max(0, Math.round((1 - (totalOpt / totalOrig)) * 100));
+
+            document.getElementById('savings-summary-text').innerText = 
+                `Đã nén ${completed.length} file: ${formatBytes(totalOrig)} ➔ ${formatBytes(totalOpt)} (Tiết kiệm ${totalSaved}% dung lượng!)`;
+        }
+
+        function downloadSingleFile(id) {
+            const item = filesQueue.find(f => f.id === id);
+            if (!item || !item.processedBlob) return;
+
+            const url = URL.createObjectURL(item.processedBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            const dotIdx = item.file.name.lastIndexOf('.');
+            const baseName = dotIdx !== -1 ? item.file.name.substring(0, dotIdx) : item.file.name;
+            a.download = `${baseName}_optimized.pdf`;
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadAllProcessedFiles() {
+            const completed = filesQueue.filter(f => f.status === 'completed');
+            completed.forEach((item, index) => {
+                setTimeout(() => downloadSingleFile(item.id), index * 300);
+            });
+        }
+
+        async function previewFileComparison(id) {
+            const item = filesQueue.find(f => f.id === id);
+            if (!item || !item.processedBlob) return;
+
+            currentPreviewFile = item;
+            currentPreviewPageNum = 1;
+            resetZoomAndPan();
+
+            document.getElementById('preview-modal').classList.remove('hidden');
+            document.getElementById('modal-filename').innerText = item.file.name;
+            document.getElementById('modal-file-status').innerText = `Gốc: ${item.originalSizeFormatted} ➔ Sau tối ưu: ${item.processedSizeFormatted}`;
+
+            setupSliderEvents();
+            setupPanZoomEvents();
+
+            await renderPreviewPage();
+        }
+
+        function switchPreviewMode(mode) {
+            previewMode = mode;
+            const btnSide = document.getElementById('mode-btn-side');
+            const btnSlider = document.getElementById('mode-btn-slider');
+            const viewSide = document.getElementById('view-side-by-side');
+            const viewSlider = document.getElementById('view-slider-mode');
+
+            if (mode === 'side') {
+                btnSide.className = 'px-3 py-1 rounded-md font-semibold text-slate-700 transition bg-white shadow-sm';
+                btnSlider.className = 'px-3 py-1 rounded-md font-semibold text-slate-500 hover:text-slate-800 transition';
+                viewSide.classList.remove('hidden');
+                viewSide.classList.add('grid');
+                viewSlider.classList.add('hidden');
+            } else {
+                btnSlider.className = 'px-3 py-1 rounded-md font-semibold text-slate-700 transition bg-white shadow-sm';
+                btnSide.className = 'px-3 py-1 rounded-md font-semibold text-slate-500 hover:text-slate-800 transition';
+                viewSlider.classList.remove('hidden');
+                viewSlider.classList.add('flex');
+                viewSide.classList.add('hidden');
+                viewSide.classList.remove('grid');
+            }
+
+            renderPreviewPage();
+        }
+
+        async function changePreviewPage(delta) {
+            if (!currentPreviewFile) return;
+            const newPage = currentPreviewPageNum + delta;
+            if (newPage >= 1 && newPage <= currentPreviewFile.pageCount) {
+                currentPreviewPageNum = newPage;
+                await renderPreviewPage();
+            }
+        }
+
+        async function renderPreviewPage() {
+            const item = currentPreviewFile;
+            if (!item) return;
+
+            document.getElementById('page-num-display').innerText = `Trang ${currentPreviewPageNum} / ${item.pageCount}`;
+            document.getElementById('btn-prev-page').disabled = (currentPreviewPageNum <= 1);
+            document.getElementById('btn-next-page').disabled = (currentPreviewPageNum >= item.pageCount);
+
+            // Render Original Canvas
+            const origBuffer = await item.file.arrayBuffer();
+            const origPdf = await pdfjsLib.getDocument({ data: origBuffer }).promise;
+            const origPage = await origPdf.getPage(currentPreviewPageNum);
+            
+            const canvasOrig = document.getElementById('preview-canvas-orig');
+            const canvasSliderOrig = document.getElementById('slider-canvas-orig');
+
+            const viewportOrig = origPage.getViewport({ scale: 1.0 });
+            canvasOrig.width = viewportOrig.width;
+            canvasOrig.height = viewportOrig.height;
+            canvasSliderOrig.width = viewportOrig.width;
+            canvasSliderOrig.height = viewportOrig.height;
+
+            await origPage.render({ canvasContext: canvasOrig.getContext('2d'), viewport: viewportOrig }).promise;
+            await origPage.render({ canvasContext: canvasSliderOrig.getContext('2d'), viewport: viewportOrig }).promise;
+
+            const origW = Math.round(viewportOrig.width * PT_TO_MM);
+            const origH = Math.round(viewportOrig.height * PT_TO_MM);
+            document.getElementById('preview-dim-orig').innerText = `Kích thước: ${origW} × ${origH} mm (${detectPaperFormat(origW, origH)})`;
+            document.getElementById('preview-size-orig').innerText = `Dung lượng gốc: ${item.originalSizeFormatted}`;
+
+            // Render Processed Canvas
+            const optBuffer = await item.processedBlob.arrayBuffer();
+            const optPdf = await pdfjsLib.getDocument({ data: optBuffer }).promise;
+            const optPage = await optPdf.getPage(currentPreviewPageNum);
+
+            const canvasOpt = document.getElementById('preview-canvas-opt');
+            const canvasSliderOpt = document.getElementById('slider-canvas-opt');
+
+            const viewportOpt = optPage.getViewport({ scale: 1.0 });
+            canvasOpt.width = viewportOpt.width;
+            canvasOpt.height = viewportOpt.height;
+            canvasSliderOpt.width = viewportOpt.width;
+            canvasSliderOpt.height = viewportOpt.height;
+
+            await optPage.render({ canvasContext: canvasOpt.getContext('2d'), viewport: viewportOpt }).promise;
+            await optPage.render({ canvasContext: canvasSliderOpt.getContext('2d'), viewport: viewportOpt }).promise;
+
+            const optW = Math.round(viewportOpt.width * PT_TO_MM);
+            const optH = Math.round(viewportOpt.height * PT_TO_MM);
+            document.getElementById('preview-dim-opt').innerText = `Kích thước: ${optW} × ${optH} mm (${detectPaperFormat(optW, optH)})`;
+            document.getElementById('preview-size-opt').innerText = `Dung lượng sau nén: ${item.processedSizeFormatted} (-${item.savings}%)`;
+        }
+
+        function adjustZoom(delta) {
+            currentZoom = Math.min(Math.max(0.4, currentZoom + delta), 3.5);
+            updateViewportTransform();
+        }
+
+        function resetZoomAndPan() {
+            currentZoom = 1.0;
+            panX = 0;
+            panY = 0;
+            updateViewportTransform();
+        }
+
+        function updateViewportTransform() {
+            const viewport = document.getElementById('zoom-pan-viewport');
+            const zoomText = document.getElementById('zoom-level-text');
+            if (viewport) {
+                viewport.style.transform = `scale(${currentZoom}) translate(${panX}px, ${panY}px)`;
+            }
+            if (zoomText) {
+                zoomText.innerText = `${Math.round(currentZoom * 100)}%`;
+            }
+        }
+
+        function setupPanZoomEvents() {
+            const wrapper = document.getElementById('preview-scroll-wrapper');
+            if (!wrapper) return;
+
+            wrapper.onmousedown = (e) => {
+                if (isSliderDragging) return;
+                isPanning = true;
+                startPanX = e.clientX - panX;
+                startPanY = e.clientY - panY;
+            };
+
+            window.onmousemove = (e) => {
+                if (isSliderDragging) {
+                    handleSliderMove(e.clientX);
+                    return;
+                }
+                if (!isPanning) return;
+                panX = e.clientX - startPanX;
+                panY = e.clientY - startPanY;
+                updateViewportTransform();
+            };
+
+            window.onmouseup = () => {
+                isPanning = false;
+                isSliderDragging = false;
+            };
+        }
+
+        function setupSliderEvents() {
+            const handle = document.getElementById('slider-divider');
+            if (!handle) return;
+
+            handle.onmousedown = (e) => {
+                e.stopPropagation();
+                isSliderDragging = true;
+            };
+
+            const box = document.getElementById('slider-box');
+            if (box) {
+                box.onclick = (e) => handleSliderMove(e.clientX);
+            }
+        }
+
+        function handleSliderMove(clientX) {
+            const box = document.getElementById('slider-box');
+            if (!box) return;
+            const rect = box.getBoundingClientRect();
+            let offsetX = clientX - rect.left;
+            offsetX = Math.max(0, Math.min(offsetX, rect.width));
+            const percentage = (offsetX / rect.width) * 100;
+
+            document.getElementById('slider-overlay-div').style.width = percentage + '%';
+            document.getElementById('slider-divider').style.left = percentage + '%';
+        }
+
+        function closePreviewModal() {
+            document.getElementById('preview-modal').classList.add('hidden');
+            currentPreviewFile = null;
+        }
+
+        function openHelpModal() {
+            document.getElementById('help-modal').classList.remove('hidden');
+        }
+
+        function closeHelpModal() {
+            document.getElementById('help-modal').classList.add('hidden');
+        }
+
+        // Helpers
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+    </script>
 </body>
 </html>
