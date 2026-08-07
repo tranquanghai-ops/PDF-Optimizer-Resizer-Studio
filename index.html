@@ -1,54 +1,75 @@
 <!DOCTYPE html>
-<html lang="vi" class="h-full bg-slate-50">
+<html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF Optimizer & Resizer Studio</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- PDFLib for PDF manipulation -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-    <!-- PDF.js for rendering pages and extracting objects -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script>
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    </script>
-    <!-- FontAwesome icons -->
+    <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        .drag-active { border-color: #3b82f6 !important; background-color: #eff6ff !important; }
-        /* Custom scrollbars */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    <!-- PDF.js for rendering and inspection -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- PDF-Lib for manipulating PDF pages & streams -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <!-- JSZip for batch downloading -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
-        /* Slider split view styles */
-        .slider-container {
-            position: relative;
-            user-select: none;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
             background-color: #f8fafc;
-            border-radius: 12px;
-            border: 1px solid #e2e8f0;
         }
-        .slider-divider-line {
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Comparison Slider Overlay Styles */
+        .comparison-container {
+            position: relative;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none;
+        }
+
+        .comparison-overlay-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .comparison-handle {
             position: absolute;
             top: 0;
             bottom: 0;
-            width: 3px;
-            background-color: #2563eb;
-            z-index: 20;
+            width: 4px;
+            background-color: #3b82f6;
             cursor: ew-resize;
+            z-index: 30;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
         }
-        .slider-handle-btn {
+
+        .comparison-handle-button {
             position: absolute;
             top: 50%;
+            left: 50%;
             transform: translate(-50%, -50%);
             width: 36px;
             height: 36px;
@@ -58,1385 +79,1717 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
-            z-index: 30;
-            cursor: ew-resize;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+            font-size: 14px;
         }
 
-        /* Pan Zoom Area */
-        .zoom-viewport {
+        /* Draggable Canvas Viewport */
+        .pan-viewport {
             cursor: grab;
-            transition: transform 0.05s ease-out;
-            transform-origin: center center;
+            overflow: auto;
         }
-        .zoom-viewport:active {
+        .pan-viewport:active {
             cursor: grabbing;
+        }
+        
+        /* Merge Grid Selected State */
+        .merge-card.selected {
+            border-color: #3b82f6 !important;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
         }
     </style>
 </head>
-<body class="min-h-full text-slate-800 flex flex-col justify-between antialiased">
+<body class="text-slate-800 min-h-screen flex flex-col justify-between antialiased">
 
-    <!-- Header Navbar -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-                    <i class="fa-solid fa-file-pdf text-xl"></i>
-                </div>
-                <div>
-                    <h1 class="font-bold text-lg text-slate-900 leading-tight">PDF Optimizer & Resizer Studio</h1>
-                    <p class="text-xs text-slate-500">Tối ưu dung lượng PDF & Đổi kích thước khổ giấy chuẩn bài nộp</p>
-                </div>
-            </div>
-            
-            <div class="flex items-center gap-3">
-                <button onclick="openHelpModal()" class="text-slate-600 hover:text-blue-600 p-2 rounded-lg hover:bg-slate-100 transition flex items-center gap-1.5 text-xs font-semibold" title="Hướng dẫn">
-                    <i class="fa-solid fa-circle-question text-base"></i>
-                    <span>Hướng dẫn</span>
-                </button>
-            </div>
-        </div>
-    </header>
-
-    <!-- Main Container -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-
-        <!-- Top Drop Zone (At the very top) -->
-        <div id="drop-zone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)" onclick="document.getElementById('file-input').click()" class="border-2 border-dashed border-blue-300 hover:border-blue-500 bg-white hover:bg-blue-50/50 rounded-2xl p-6 sm:p-8 text-center transition-all cursor-pointer shadow-sm relative group">
-            <input type="file" id="file-input" accept="application/pdf" multiple onchange="handleFileSelect(event)" class="hidden">
-            
-            <div class="w-16 h-16 rounded-2xl bg-blue-100 group-hover:bg-blue-200 text-blue-600 mx-auto flex items-center justify-center text-2xl transition mb-3 shadow-sm">
-                <i class="fa-solid fa-cloud-arrow-up"></i>
-            </div>
-
-            <h3 class="font-bold text-slate-800 text-base mb-1">Kéo & thả file PDF vào đây hoặc <span class="text-blue-600 underline">Chọn từ máy tính</span></h3>
-            <p class="text-xs text-slate-500 max-w-md mx-auto">Tải lên một hoặc nhiều file PDF bài tập, đồ án. Hệ thống tự động nhận diện kích thước thực tế.</p>
-            
-            <div class="flex flex-wrap items-center justify-center gap-4 mt-4 text-slate-500 text-xs font-medium">
-                <span class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-500"></i> Nén file bài tập lớn</span>
-                <span class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-500"></i> Đổi khổ A2/A3/A4 / Thuyết trình</span>
-                <span class="flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-500"></i> Tự chọn nén Hybrid hoặc Vector</span>
-            </div>
-        </div>
-
-        <!-- Global Settings & Presets Control Panel -->
-        <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 pb-3 gap-2">
-                <h2 class="font-bold text-slate-900 text-sm flex items-center gap-2">
-                    <i class="fa-solid fa-sliders text-blue-600"></i> Cấu hình Mặc định (Áp dụng cho File)
-                </h2>
-                <div class="flex items-center gap-2">
-                    <button onclick="applyGlobalToAllFiles()" class="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5">
-                        <i class="fa-solid fa-arrows-rotate"></i> Áp dụng cho tất cả file đã tải
-                    </button>
-                    <button onclick="resetGlobalSettings()" class="text-xs text-slate-500 hover:text-blue-600 underline px-2 py-1">
-                        Khôi phục mặc định
-                    </button>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                <!-- Preset -->
-                <div>
-                    <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-1.5">Mức độ nén mặc định</label>
-                    <select id="global-preset" onchange="applyGlobalPreset()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="super" selected>⚡ Siêu Giảm (Nén toàn bộ - Khuyên dùng)</option>
-                        <option value="hybrid">🖼️ Phẳng nền sang 1 hình ảnh, Giữ chữ bôi đen (Hybrid)</option>
-                        <option value="balanced">⚖️ Cân bằng (Chỉ nén nhẹ ảnh gốc)</option>
-                        <option value="vector">📐 Giữ Vector gốc (Chỉ đổi kích thước giấy)</option>
-                    </select>
-                </div>
-
-                <!-- Resize option -->
-                <div>
-                    <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-1.5">Kích thước trang mặc định</label>
-                    <select id="global-resize" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="A4" selected>Chuyển về khổ A4 (210 × 297 mm)</option>
-                        <option value="A3">Chuyển về khổ A3 (297 × 420 mm)</option>
-                        <option value="PRESENTATION_169">Khổ Thuyết trình Slide (16:9 - 338 × 190 mm)</option>
-                        <option value="PRESENTATION_43">Khổ Thuyết trình Slide (4:3 - 254 × 190 mm)</option>
-                        <option value="half">Giảm 1/2 kích thước (50%)</option>
-                        <option value="scale75">Giảm 25% kích thước (75%)</option>
-                        <option value="original">Giữ nguyên khổ giấy gốc</option>
-                    </select>
-                </div>
-
-                <!-- Quality & DPI -->
-                <div>
-                    <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-1.5">Độ phân giải & Chất lượng</label>
-                    <div class="flex gap-2">
-                        <select id="global-dpi" class="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 font-medium text-slate-800">
-                            <option value="72">72 DPI (Siêu nhẹ)</option>
-                            <option value="96">96 DPI (Nhẹ)</option>
-                            <option value="120" selected>120 DPI (Cân bằng)</option>
-                            <option value="150">150 DPI (Chuẩn nộp)</option>
-                            <option value="200">200 DPI (Sắc nét)</option>
-                            <option value="300">300 DPI (In ấn cao cấp)</option>
-                        </select>
-                        <select id="global-quality" class="w-1/2 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 font-medium text-slate-800">
-                            <option value="40">CL 40% (Nén rất cao)</option>
-                            <option value="50">CL 50% (Nén cao)</option>
-                            <option value="60">CL 60% (Nén vừa)</option>
-                            <option value="70" selected>CL 70% (Chuẩn)</option>
-                            <option value="80">CL 80% (Rõ nét)</option>
-                            <option value="90">CL 90% (Nét rất cao)</option>
-                            <option value="100">CL 100% (Gốc / Không nén)</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Advanced Optimization Options (Always Visible) -->
-            <div class="pt-3 border-t border-slate-100">
-                <div class="text-xs font-bold text-slate-700 flex items-center justify-between mb-2">
-                    <span class="flex items-center gap-1.5">
-                        <i class="fa-solid fa-filter-circle-xmark text-blue-600"></i> Tùy chọn Tối ưu Nâng cao
-                        <span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Khuyên dùng</span>
-                    </span>
-                </div>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1 text-[11px] text-slate-600">
-                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
-                        <input type="checkbox" id="nitro-annots" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
-                        <span>Xóa Ghi chú & Markups</span>
-                    </label>
-                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
-                        <input type="checkbox" id="nitro-links" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
-                        <span>Xóa Links & Form Fields</span>
-                    </label>
-                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
-                        <input type="checkbox" id="nitro-js" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
-                        <span>Xóa JavaScripts & Mã nhúng</span>
-                    </label>
-                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
-                        <input type="checkbox" id="nitro-bookmarks" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
-                        <span>Xóa Bookmarks & Outlines</span>
-                    </label>
-                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
-                        <input type="checkbox" id="nitro-attachments" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
-                        <span>Xóa File đính kèm</span>
-                    </label>
-                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
-                        <input type="checkbox" id="nitro-thumbs" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
-                        <span>Xóa Thumbnail Images</span>
-                    </label>
-                    <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-900">
-                        <input type="checkbox" id="nitro-unused" checked class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5">
-                        <span>Dọn dẹp Đối tượng rác</span>
-                    </label>
-                </div>
-            </div>
-        </div>
-
-        <!-- Queue & File Action Section -->
-        <div id="queue-container" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hidden flex-col">
-            <div class="p-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <h3 class="font-bold text-slate-800 text-sm">Danh sách File PDF đã tải lên</h3>
-                    <span id="file-count-tag" class="bg-blue-100 text-blue-700 text-xs font-semibold px-2.5 py-0.5 rounded-full">0 file</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="clearQueue()" class="text-xs text-rose-600 hover:bg-rose-50 px-2.5 py-1 rounded-lg transition font-medium flex items-center gap-1">
-                        <i class="fa-solid fa-trash-can"></i> Xóa tất cả
-                    </button>
-                </div>
-            </div>
-
-            <!-- File List -->
-            <div id="file-list" class="divide-y divide-slate-100 max-h-[600px] overflow-y-auto p-3 space-y-3">
-                <!-- Dynamic File Cards rendered here -->
-            </div>
-
-            <!-- Global Action Bar -->
-            <div class="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div class="text-xs text-slate-500 flex items-center gap-2">
-                    <i class="fa-solid fa-circle-info text-blue-500"></i>
-                    <span id="total-stat-summary">Sẵn sàng tối ưu hóa.</span>
-                </div>
-
-                <button id="start-process-btn" onclick="processAllFiles()" class="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold px-6 py-2.5 rounded-xl shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition active:scale-95 text-xs sm:text-sm">
-                    <i class="fa-solid fa-wand-magic-sparkles"></i> Bắt đầu Tối ưu & Resize tất cả
-                </button>
-            </div>
-        </div>
-
-        <!-- Output Summary -->
-        <div id="results-container" class="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-5 hidden space-y-4">
-            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+    <div class="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1">
+        
+        <!-- Header -->
+        <header class="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200 pb-5">
+            <div>
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center text-lg shadow-sm flex-shrink-0">
-                        <i class="fa-solid fa-circle-check"></i>
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20 font-bold text-xl">
+                        <i class="fa-solid fa-file-pdf"></i>
                     </div>
                     <div>
-                        <h3 class="font-bold text-slate-900 text-sm">Hoàn tất Tối ưu hóa & Resize!</h3>
-                        <p id="savings-summary-text" class="text-xs text-emerald-700 font-medium">Đã tiết kiệm dung lượng đáng kể.</p>
+                        <h1 class="text-2xl font-bold text-slate-900 tracking-tight">PDF Optimizer & Resizer Studio</h1>
+                        <p class="text-xs font-medium text-slate-500">Hệ thống tối ưu dung lượng & xử lý PDF chuẩn đồ án (Client-Side)</p>
                     </div>
                 </div>
+            </div>
+            
+            <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2 shadow-sm text-xs text-slate-600">
+                <i class="fa-solid fa-hard-drive text-blue-500 text-base"></i>
+                <div>
+                    <span class="block font-semibold text-slate-800">Bảo mật đa luồng</span>
+                    <span class="text-[11px] text-slate-500">Xử lý tại máy tính - Web Worker 100%</span>
+                </div>
+            </div>
+        </header>
 
-                <button id="download-all-btn" onclick="downloadAllProcessedFiles()" class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-1.5 transition">
-                    <i class="fa-solid fa-download"></i> Tải tất cả file đã tối ưu
+        <!-- TOP FILE DROPZONE -->
+        <div id="drop-zone" 
+             class="mb-6 border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50/50 hover:bg-blue-50 transition-all rounded-2xl p-8 text-center cursor-pointer relative group shadow-sm">
+            <input type="file" id="file-input" accept="application/pdf" multiple class="hidden" onchange="handleFileSelect(event)">
+            
+            <div class="flex flex-col items-center justify-center space-y-3">
+                <div class="w-16 h-16 rounded-2xl bg-white border border-blue-100 text-blue-600 flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-200">
+                    <i class="fa-solid fa-cloud-arrow-up text-3xl"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-800 mb-1">Kéo & Thả các file PDF vào đây hoặc <span class="text-blue-600 underline">Chọn từ máy tính</span></h3>
+                    <p class="text-xs text-slate-500">Hỗ trợ nộp nhiều file cùng lúc (Tối ưu bản vẽ CAD, Đồ án Photoshop/Illustrator >100MB)</p>
+                </div>
+                <div class="flex flex-wrap items-center justify-center gap-2 pt-2">
+                    <span class="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-medium text-slate-600">
+                        <i class="fa-solid fa-check text-green-500 mr-1"></i> Nhận diện tự động Khổ giấy
+                    </span>
+                    <span class="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-medium text-slate-600">
+                        <i class="fa-solid fa-check text-green-500 mr-1"></i> Fit Căn giữa & Scale thông minh
+                    </span>
+                    <span class="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-medium text-slate-600">
+                        <i class="fa-solid fa-check text-green-500 mr-1"></i> Xóa rác ẩn Deep GC
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- GLOBAL DEFAULT CONFIGURATION PANEL -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 mb-6 shadow-sm">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-blue-600"></i>
+                    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Cấu hình Mặc định Hàng loạt</h2>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="applyGlobalToAllFiles()" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors flex items-center gap-1.5">
+                        <i class="fa-solid fa-arrows-rotate"></i> Áp dụng cho tất cả
+                    </button>
+                    <button onclick="resetGlobalSettings()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl px-3 py-1.5 text-xs font-medium transition-colors">
+                        Mặc định
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs mb-4">
+                <div>
+                    <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-1.5">Chế độ nén:</label>
+                    <select id="global-preset" onchange="applyGlobalPreset()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="balanced" selected>⚖️ Nén chuẩn (Giữ Vector/CAD & Nén ảnh)</option>
+                        <option value="super">⚡ Rasterize (Chuyển toàn trang thành JPEG)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-1.5">Kích thước (Fit & Center):</label>
+                    <select id="global-resize" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="A4">Khổ A4 (210 × 297 mm)</option>
+                        <option value="A3">Khổ A3 (297 × 420 mm)</option>
+                        <option value="A2">Khổ A2 (420 × 594 mm)</option>
+                        <option value="A1">Khổ A1 (594 × 841 mm)</option>
+                        <option value="A0">Khổ A0 (841 × 1189 mm)</option>
+                        <option value="SLIDE_16_9">🖥️ Màn hình Thuyết trình (16:9)</option>
+                        <option value="SLIDE_4_3">📺 Màn hình Thuyết trình (4:3)</option>
+                        <option value="NONE" selected>↔️ Giữ nguyên khổ giấy gốc</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-1.5">DPI (Độ nét ảnh):</label>
+                    <select id="global-dpi" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="96">96 DPI (Web & Đọc máy tính)</option>
+                        <option value="120" selected>120 DPI (Tiêu chuẩn đồ án nộp LMS)</option>
+                        <option value="150">150 DPI (Sắc nét cao)</option>
+                        <option value="200">200 DPI (Chất lượng in ấn)</option>
+                        <option value="300">300 DPI (Bản vẽ sắc nét tuyệt đối)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-1.5">CL JPEG (Chỉ áp dụng ảnh tĩnh):</label>
+                    <select id="global-quality" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="50">50% (Tiết kiệm bộ nhớ)</option>
+                        <option value="60">60% (Cân bằng cao)</option>
+                        <option value="70" selected>70% (Mặc định khuyên dùng)</option>
+                        <option value="80">80% (Hình ảnh đẹp)</option>
+                        <option value="100">100% (Không nén ảnh)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="global-advanced-container" class="border-t border-slate-100 pt-3">
+                <label class="block font-semibold uppercase text-[11px] text-slate-500 mb-2">Trình Dọn rác PDF Chuyên sâu:</label>
+                <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 gap-2 text-[11px]">
+                    <!-- Tất cả checkbox đều bật mặc định, bỏ disabled để người dùng tùy chỉnh -->
+                    <label class="flex items-center gap-1.5 text-slate-700 cursor-pointer">
+                        <input type="checkbox" id="global-opt-hidden" checked class="rounded text-blue-600 focus:ring-blue-500">
+                        <span class="font-semibold text-blue-700">Dọn Layer Ẩn (Photoshop/CAD)</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 text-slate-700 cursor-pointer">
+                        <input type="checkbox" id="global-opt-annots" checked class="rounded text-blue-600 focus:ring-blue-500">
+                        <span>Xóa chú thích (Annotations)</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 text-slate-700 cursor-pointer">
+                        <input type="checkbox" id="global-opt-links" checked class="rounded text-blue-600 focus:ring-blue-500">
+                        <span>Xóa liên kết (Links)</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 text-slate-700 cursor-pointer">
+                        <input type="checkbox" id="global-opt-js" checked class="rounded text-blue-600 focus:ring-blue-500">
+                        <span>Lọc JS Nhúng (Bảo mật)</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 text-slate-700 cursor-pointer">
+                        <input type="checkbox" id="global-opt-bookmarks" checked class="rounded text-blue-600 focus:ring-blue-500">
+                        <span>Xóa Bookmarks</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 text-slate-700 cursor-pointer">
+                        <input type="checkbox" id="global-opt-attach" checked class="rounded text-blue-600 focus:ring-blue-500">
+                        <span>Xóa File Đính kèm</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 text-slate-700 cursor-pointer">
+                        <input type="checkbox" id="global-opt-thumb" checked class="rounded text-blue-600 focus:ring-blue-500">
+                        <span>Xóa Ảnh Thumbnails</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 text-slate-700 cursor-pointer">
+                        <input type="checkbox" id="global-opt-unused" checked class="rounded text-blue-600 focus:ring-blue-500">
+                        <span class="font-semibold text-rose-600">Deep GC (Dọn rác Adobe)</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- ACTION TOOLBAR FOR FILE QUEUE -->
+        <div id="queue-actions-bar" class="hidden mb-6 flex flex-wrap items-center justify-between gap-4 bg-slate-900 text-white p-4 rounded-2xl shadow-md">
+            <div class="flex items-center gap-3">
+                <span id="queue-count-badge" class="bg-blue-600 text-white font-bold text-xs px-3 py-1 rounded-full">0 File</span>
+                <div>
+                    <span class="text-xs font-semibold block text-slate-200">Danh sách File xử lý</span>
+                    <span id="queue-savings-summary" class="text-[11px] text-slate-400">Sẵn sàng tối ưu...</span>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+                <button onclick="openMergeModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg transition-all flex items-center gap-2">
+                    <i class="fa-solid fa-layer-group"></i> Gộp File (Combine)
+                </button>
+                <div class="w-px h-5 bg-slate-700 mx-1 hidden sm:block"></div>
+                <button onclick="processAllFiles()" class="bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg transition-all flex items-center gap-2">
+                    <i class="fa-solid fa-bolt"></i> Tối ưu & Resize Tất Cả
+                </button>
+                <button onclick="downloadAllZip()" id="download-all-btn" disabled class="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-300 font-semibold text-xs px-4 py-2.5 rounded-xl border border-slate-700 transition-colors flex items-center gap-2">
+                    <i class="fa-solid fa-file-zipper"></i> Tải .ZIP
                 </button>
             </div>
         </div>
 
-    </main>
+        <!-- FILE LIST CONTAINER -->
+        <div id="file-queue-container" class="space-y-4 mb-8">
+            <!-- Files will be injected here dynamically -->
+        </div>
 
-    <!-- Footer -->
-    <footer class="bg-white border-t border-slate-200 py-4 mt-8">
-        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
-            <p class="font-medium text-slate-700">Built by: <span class="font-bold text-blue-600">Trần Quang Hải</span> - email: <a href="mailto:tranquanghai@tdtu.edu.vn" class="underline text-blue-600 hover:text-blue-800">tranquanghai@tdtu.edu.vn</a></p>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="bg-white border-t border-slate-200 py-5 mt-auto shadow-inner">
+        <div class="max-w-7xl mx-auto px-4 text-center">
+            <p class="text-sm font-semibold text-slate-700 mb-1">
+                Built by: <span class="text-blue-600">Trần Quang Hải</span> - Email: <a href="mailto:tranquanghai@tdtu.edu.vn" class="text-blue-600 underline hover:text-blue-800 transition-colors">tranquanghai@tdtu.edu.vn</a>
+            </p>
+            <p class="text-[11px] text-slate-500 font-medium">Hệ thống xử lý PDF Client-side chuyên nghiệp hỗ trợ giảng viên & sinh viên.</p>
         </div>
     </footer>
 
-    <!-- Modal Preview & Comparison (Side-by-Side + Swipe Slider + Zoom/Pan) -->
-    <div id="preview-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-5">
-        <div class="bg-white rounded-2xl w-full max-w-6xl h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+    <!-- MERGE (COMBINE) MODAL -->
+    <div id="merge-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[60] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
             <!-- Modal Header -->
-            <div class="p-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-                <div class="min-w-0 pr-2">
-                    <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2 truncate">
-                        <i class="fa-solid fa-eye text-blue-600"></i> Xem trước & So sánh Trang: <span id="modal-filename" class="text-blue-700 font-semibold truncate">--</span>
-                    </h3>
+            <div class="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-layer-group text-indigo-600 text-xl"></i>
+                    <h3 class="font-bold text-slate-800 text-lg">Gộp File PDF (Combine Files)</h3>
                 </div>
-                <button onclick="closePreviewModal()" class="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg text-lg flex-shrink-0">
-                    <i class="fa-solid fa-xmark"></i>
+                <button onclick="closeMergeModal()" class="text-slate-400 hover:text-rose-500 transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-rose-50">
+                    <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
-            
-            <!-- Controls & Mode Selector Toolbar -->
-            <div class="px-4 py-2 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-                <!-- Page Navigation -->
-                <div class="flex items-center gap-2">
-                    <button id="btn-prev-page" onclick="changePreviewPage(-1)" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">
-                        <i class="fa-solid fa-chevron-left"></i> Trang trước
+
+            <!-- Toolbar -->
+            <div class="p-3 border-b border-slate-200 bg-white flex flex-wrap gap-2 items-center justify-between">
+                <div>
+                    <button onclick="document.getElementById('merge-file-input').click()" class="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-colors">
+                        <i class="fa-solid fa-plus mr-1 text-blue-600"></i> Thêm File...
                     </button>
-                    <span id="page-num-display" class="font-bold text-slate-700 px-1">Trang 1 / 1</span>
-                    <button id="btn-next-page" onclick="changePreviewPage(1)" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">
-                        Trang sau <i class="fa-solid fa-chevron-right"></i>
+                    <input type="file" id="merge-file-input" accept="application/pdf" multiple class="hidden" onchange="handleMergeFiles(event)">
+                </div>
+                <div class="flex gap-2">
+                    <span class="text-xs text-slate-400 my-auto mr-2 italic">Chọn file để di chuyển:</span>
+                    <button onclick="moveMergeSelected(-1)" title="Di chuyển lên/trái" class="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium shadow-sm transition-colors">
+                        <i class="fa-solid fa-arrow-left"></i>
+                    </button>
+                    <button onclick="moveMergeSelected(1)" title="Di chuyển xuống/phải" class="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium shadow-sm transition-colors">
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                    <div class="w-px h-6 bg-slate-200 my-auto mx-1"></div>
+                    <button onclick="removeMergeSelected()" title="Xóa file khỏi danh sách gộp" class="bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 px-3 py-2 rounded-lg text-sm font-medium shadow-sm transition-colors">
+                        <i class="fa-solid fa-trash"></i>
                     </button>
                 </div>
-
-                <!-- View Mode Toggle (Side-by-side vs Slider) -->
-                <div class="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                    <button id="mode-btn-side" onclick="switchPreviewMode('side')" class="px-3 py-1 rounded-md font-semibold text-slate-700 transition bg-white shadow-sm">
-                        <i class="fa-solid fa-columns"></i> Song song
-                    </button>
-                    <button id="mode-btn-slider" onclick="switchPreviewMode('slider')" class="px-3 py-1 rounded-md font-semibold text-slate-500 hover:text-slate-800 transition">
-                        <i class="fa-solid fa-sliders"></i> Trượt so sánh
-                    </button>
-                </div>
-
-                <!-- Zoom & Pan Controls -->
-                <div class="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200">
-                    <button onclick="adjustZoom(-0.15)" class="w-7 h-7 bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 flex items-center justify-center font-bold" title="Thu nhỏ">
-                        <i class="fa-solid fa-minus text-xs"></i>
-                    </button>
-                    <span id="zoom-level-text" class="text-[11px] font-bold text-slate-700 w-12 text-center">100%</span>
-                    <button onclick="adjustZoom(0.15)" class="w-7 h-7 bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 flex items-center justify-center font-bold" title="Phóng to">
-                        <i class="fa-solid fa-plus text-xs"></i>
-                    </button>
-                    <button onclick="resetZoomAndPan()" class="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded text-[11px] font-semibold text-slate-600 ml-1" title="Khôi phục zoom">
-                        <i class="fa-solid fa-rotate-right"></i> Reset
-                    </button>
-                </div>
-
-                <div id="modal-file-status" class="text-slate-500 font-medium text-[11px] hidden md:block">--</div>
             </div>
 
-            <!-- Modal Body Container -->
-            <div id="preview-scroll-wrapper" class="flex-1 overflow-hidden p-4 bg-slate-100 relative flex items-center justify-center select-none">
-                
-                <!-- View Container for Zooming and Panning -->
-                <div id="zoom-pan-viewport" class="zoom-viewport w-full h-full flex items-center justify-center">
-                    
-                    <!-- View Mode 1: Side-by-side -->
-                    <div id="view-side-by-side" class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-5xl h-full items-center">
-                        <!-- Original Canvas -->
-                        <div class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-col items-center max-h-full">
-                            <span class="text-xs font-bold text-slate-600 mb-2 flex items-center gap-1">
-                                <i class="fa-solid fa-file text-slate-400"></i> Trang gốc PDF
-                            </span>
-                            <div class="relative w-full flex-1 bg-slate-50 rounded border overflow-hidden flex items-center justify-center">
-                                <canvas id="preview-canvas-orig" class="max-w-full max-h-[58vh] object-contain"></canvas>
-                            </div>
-                            <div class="mt-2 text-center space-y-0.5">
-                                <div id="preview-dim-orig" class="text-xs font-semibold text-slate-700">Kích thước: -- × -- mm</div>
-                                <div id="preview-size-orig" class="text-[11px] text-slate-500">Dung lượng: --</div>
-                            </div>
-                        </div>
-
-                        <!-- Optimized Canvas -->
-                        <div class="bg-white p-3 rounded-xl shadow-sm border border-emerald-400 flex flex-col items-center max-h-full">
-                            <span class="text-xs font-bold text-emerald-600 mb-2 flex items-center gap-1">
-                                <i class="fa-solid fa-wand-magic-sparkles text-emerald-500"></i> Trang Tối ưu & Resize
-                            </span>
-                            <div class="relative w-full flex-1 bg-slate-50 rounded border overflow-hidden flex items-center justify-center">
-                                <canvas id="preview-canvas-opt" class="max-w-full max-h-[58vh] object-contain"></canvas>
-                            </div>
-                            <div class="mt-2 text-center space-y-0.5">
-                                <div id="preview-dim-opt" class="text-xs font-bold text-emerald-700">Kích thước: -- × -- mm</div>
-                                <div id="preview-size-opt" class="text-[11px] text-emerald-600 font-semibold">Dung lượng: --</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- View Mode 2: Swipe Slider Comparison (Overlay) -->
-                    <div id="view-slider-mode" class="hidden w-full max-w-4xl h-full flex flex-col items-center justify-center">
-                        <div id="slider-box" class="slider-container w-full h-[65vh] relative shadow-md bg-slate-100 flex items-center justify-center overflow-hidden rounded-xl border border-slate-200 select-none">
-                            <!-- Inner wrapper matching exact canvas dimensions -->
-                            <div id="slider-canvas-wrapper" class="relative max-h-[62vh] max-w-full flex items-center justify-center">
-                                <!-- Base layer (Original PDF Canvas) -->
-                                <canvas id="slider-canvas-orig" class="max-h-[62vh] max-w-full object-contain block shadow-sm"></canvas>
-
-                                <!-- Overlay Layer (Optimized PDF Canvas superimposed with exact clip-path) -->
-                                <canvas id="slider-canvas-opt" class="absolute top-0 left-0 w-full h-full object-contain block pointer-events-none shadow-sm" style="clip-path: inset(0 calc(100% - 50%) 0 0);"></canvas>
-
-                                <!-- Divider line and Handle -->
-                                <div id="slider-divider" class="slider-divider-line" style="left: 50%;">
-                                    <div class="slider-handle-btn">
-                                        <i class="fa-solid fa-arrows-left-right text-xs"></i>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mt-3 flex items-center justify-between w-full text-xs font-medium px-2">
-                            <span class="text-slate-600 flex items-center gap-1"><i class="fa-solid fa-arrow-left"></i> File Gốc (Trái)</span>
-                            <span class="text-blue-600 font-bold">Kéo thanh trượt để so sánh trực tiếp</span>
-                            <span class="text-emerald-600 flex items-center gap-1">File Tối ưu (Phải) <i class="fa-solid fa-arrow-right"></i></span>
-                        </div>
-                    </div>
-
+            <!-- Scrollable File Grid -->
+            <div class="flex-1 overflow-auto p-6 bg-slate-100/50">
+                <div id="merge-grid" class="flex flex-wrap gap-4 items-start">
+                    <!-- Cards will be injected here -->
                 </div>
+                <div id="merge-empty-state" class="hidden flex-col items-center justify-center h-full text-slate-400 py-10">
+                    <i class="fa-solid fa-folder-open text-5xl mb-3 text-slate-300"></i>
+                    <p class="font-medium">Chưa có file nào. Hãy thêm file để bắt đầu gộp!</p>
+                </div>
+            </div>
 
+            <!-- Modal Footer -->
+            <div class="bg-slate-50 border-t border-slate-200 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div class="text-sm text-slate-600 font-medium">
+                    <i class="fa-solid fa-file-pdf text-slate-400 mr-1"></i> Số lượng file: <span id="merge-total-files" class="font-bold text-slate-800">0</span> 
+                    <span class="mx-2 text-slate-300">|</span> 
+                    <i class="fa-regular fa-file-lines text-slate-400 mr-1"></i> Số trang: <span id="merge-total-pages" class="font-bold text-slate-800">0</span>
+                </div>
+                <button onclick="executeMerge()" id="btn-execute-merge" class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-8 py-2.5 rounded-xl font-bold shadow-md shadow-indigo-600/30 transition-all w-full sm:w-auto flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-object-group"></i> Thực thi Gộp File
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- Modal Help -->
-    <div id="help-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-            <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-blue-50">
-                <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
-                    <i class="fa-solid fa-graduation-cap text-blue-600"></i> Hướng dẫn nén & Resize PDF
-                </h3>
-                <button onclick="closeHelpModal()" class="text-slate-400 hover:text-slate-700 p-1 rounded-lg">
+    <!-- PREVIEW & COMPARISON MODAL -->
+    <div id="preview-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 hidden flex flex-col justify-between p-3 sm:p-6">
+        <!-- Modal Header -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="bg-blue-600 text-white font-bold text-[10px] uppercase px-2 py-0.5 rounded-md">Xem trước & So sánh</span>
+                    <h3 id="preview-filename" class="font-bold text-sm text-slate-100 truncate max-w-md">filename.pdf</h3>
+                </div>
+                <div class="flex flex-wrap items-center gap-3 text-xs text-slate-400 mt-1">
+                    <span id="preview-info-orig"><i class="fa-solid fa-file text-slate-500 mr-1"></i> Gốc: 0 × 0 mm</span>
+                    <i class="fa-solid fa-arrow-right text-blue-400 text-[10px]"></i>
+                    <span id="preview-info-opt" class="text-green-400 font-semibold"><i class="fa-solid fa-compress text-green-500 mr-1"></i> Tối ưu: 0 × 0 mm</span>
+                </div>
+            </div>
+
+            <!-- Page Selector & View Mode Switcher -->
+            <div class="flex flex-wrap items-center gap-2">
+                <!-- Page Selector -->
+                <div class="flex items-center bg-slate-800 rounded-xl px-2 py-1 border border-slate-700 text-xs">
+                    <button onclick="changePreviewPage(-1)" class="w-7 h-7 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <span id="preview-page-indicator" class="px-2 font-medium text-slate-200">Trang 1 / 1</span>
+                    <button onclick="changePreviewPage(1)" class="w-7 h-7 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
+
+                <!-- Mode Toggle Buttons -->
+                <div class="bg-slate-800 p-1 rounded-xl border border-slate-700 flex items-center text-xs">
+                    <button id="btn-mode-side" onclick="setPreviewMode('side')" class="px-3 py-1.5 rounded-lg font-semibold bg-blue-600 text-white transition-all">
+                        <i class="fa-solid fa-columns mr-1"></i> Song song
+                    </button>
+                    <button id="btn-mode-slider" onclick="setPreviewMode('slider')" class="px-3 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-white transition-all">
+                        <i class="fa-solid fa-sliders mr-1"></i> Trượt so sánh
+                    </button>
+                </div>
+
+                <!-- Zoom Controls -->
+                <div class="flex items-center bg-slate-800 rounded-xl p-1 border border-slate-700 text-xs">
+                    <button onclick="zoomPreview(-0.15)" class="w-7 h-7 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-minus"></i>
+                    </button>
+                    <span id="zoom-indicator" class="px-2 font-mono text-[11px] text-slate-300">100%</span>
+                    <button onclick="zoomPreview(0.15)" class="w-7 h-7 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg flex items-center justify-center">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                    <button onclick="resetPreviewZoom()" class="px-2 text-slate-400 hover:text-white text-[11px]">Reset</button>
+                </div>
+
+                <button onclick="closePreviewModal()" class="w-9 h-9 bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white rounded-xl flex items-center justify-center transition-colors">
                     <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
             </div>
-            <div class="p-6 space-y-3 text-xs text-slate-600 overflow-y-auto leading-relaxed">
-                <p class="font-bold text-slate-800 text-sm">Các gợi ý chọn cấu hình nén:</p>
-                <ul class="list-disc pl-5 space-y-2">
-                    <li><b>⚡ Siêu Giảm (Nén toàn bộ sang JPEG):</b> Phù hợp nhất cho file AutoCAD, Illustrator, Photoshop (>100MB). Toàn bộ nội dung được chuyển sang hình nén chuẩn 120-150 DPI, giảm dung lượng xuống dưới 5MB ngay lập tức.</li>
-                    <li><b>🖼️ Nén Background sang hình, Giữ chữ Vector (Hybrid):</b> Tự động phát hiện và nén lại các lớp hình ảnh nền đồ họa nặng, đồng thời giữ nguyên font chữ và nét vẽ Vector ở mặt trước giúp nét chữ sắc nét tuyệt đối.</li>
-                    <li><b>📐 Giữ Vector gốc:</b> Giữ nguyên chất lượng vector ban đầu, chỉ tính toán đổi kích thước khổ giấy (A2/A3 ➔ A4).</li>
-                    <li><b>Thuyết trình Slide:</b> Chọn kích thước <b>"Khổ Thuyết trình (16:9)"</b> để file hiển thị vừa vặn đẹp mắt trên màn hình laptop/máy chiếu.</li>
-                </ul>
+        </div>
+
+        <!-- Modal Viewport Container -->
+        <div id="modal-viewport" class="flex-1 my-3 bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden relative pan-viewport flex items-center justify-center p-4">
+            
+            <!-- SIDE BY SIDE VIEW -->
+            <div id="view-side-container" class="flex flex-col md:flex-row items-center justify-center gap-6 w-full h-full">
+                <!-- Original Canvas Card -->
+                <div class="flex flex-col items-center bg-slate-950/60 p-3 rounded-2xl border border-slate-800 max-h-full">
+                    <span class="text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider"><i class="fa-solid fa-file-pdf mr-1 text-rose-500"></i> Trang PDF Gốc</span>
+                    <div class="overflow-hidden rounded-lg shadow-2xl flex items-center justify-center">
+                        <canvas id="canvas-orig-side" class="max-w-full max-h-[65vh] object-contain"></canvas>
+                    </div>
+                </div>
+
+                <!-- Optimized Canvas Card -->
+                <div class="flex flex-col items-center bg-slate-950/60 p-3 rounded-2xl border border-slate-800 max-h-full">
+                    <span class="text-xs font-semibold text-green-400 mb-2 uppercase tracking-wider"><i class="fa-solid fa-bolt mr-1"></i> Trang sau Tối ưu</span>
+                    <div class="overflow-hidden rounded-lg shadow-2xl flex items-center justify-center">
+                        <canvas id="canvas-opt-side" class="max-w-full max-h-[65vh] object-contain"></canvas>
+                    </div>
+                </div>
             </div>
+
+            <!-- OVERLAY SLIDER VIEW -->
+            <div id="view-slider-container" class="hidden relative items-center justify-center max-w-full max-h-full">
+                <div id="slider-box" class="comparison-container rounded-xl overflow-hidden shadow-2xl relative inline-block">
+                    <!-- Base Canvas (Original) -->
+                    <canvas id="canvas-orig-slider" class="block max-w-full max-h-[70vh] object-contain"></canvas>
+                    
+                    <!-- Top Clipped Canvas (Optimized) -->
+                    <canvas id="canvas-opt-slider" class="comparison-overlay-canvas"></canvas>
+
+                    <!-- Divider Handle -->
+                    <div id="slider-handle" class="comparison-handle" style="left: 50%;">
+                        <div class="comparison-handle-button">
+                            <i class="fa-solid fa-code-compare"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Modal Footer Info -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl px-4 py-2 text-center text-xs text-slate-400 flex items-center justify-between">
+            <span><i class="fa-solid fa-hand-pointer mr-1"></i> Kéo thanh trượt hoặc nhấp giữ chuột để di chuyển canvas</span>
+            <span id="preview-dimensions-tag" class="font-mono text-slate-300">Scale: 100%</span>
         </div>
     </div>
 
+    <!-- SCRIPT SECTION -->
     <script>
-        // PDF Constants
-        const PT_TO_MM = 0.352778;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // Application State Store
+        let filesQueue = [];
+        let activePreviewIndex = null;
+        let previewCurrentPage = 1;
+        let previewTotalPages = 1;
+        let previewMode = 'side'; 
+        let previewZoom = 1.0;
         
-        // Standard paper sizes long edges in points (72 pt = 1 inch)
-        const TARGET_LONG_EDGES = {
-            A4: 841.89,                      // 297 mm
-            A3: 1190.55,                     // 420 mm
-            PRESENTATION_169: 960.0,         // 16:9 Slide Screen (width ~ 338.7mm)
-            PRESENTATION_43: 720.0,          // 4:3 Slide Screen (width ~ 254mm)
+        // Merge Modal State
+        let selectedMergeIndex = null;
+
+        // STANDARD PAPER DIMENSIONS IN MILLIMETERS
+        const PAPER_STANDARDS_MM = {
+            'A0': { width: 841, height: 1189, longEdge: 1189 },
+            'A1': { width: 594, height: 841, longEdge: 841 },
+            'A2': { width: 420, height: 594, longEdge: 594 },
+            'A3': { width: 297, height: 420, longEdge: 420 },
+            'A4': { width: 210, height: 297, longEdge: 297 },
+            'SLIDE_16_9': { width: 338.67, height: 190.5, longEdge: 338.67 },
+            'SLIDE_4_3': { width: 297, height: 222.75, longEdge: 297 }
         };
 
-        // Global State
-        let filesQueue = [];
-        let currentPreviewFile = null;
-        let currentPreviewPageNum = 1;
-        let previewMode = 'side'; // 'side' or 'slider'
+        window.addEventListener('load', () => {
+            setupDropZone();
+        });
 
-        // Zoom & Pan state
-        let currentZoom = 1.0;
-        let panX = 0;
-        let panY = 0;
-        let isPanning = false;
-        let startPanX = 0;
-        let startPanY = 0;
+        window.addEventListener('dragover', (e) => e.preventDefault(), false);
+        window.addEventListener('drop', (e) => e.preventDefault(), false);
 
-        // Slider interaction state
-        let isSliderDragging = false;
-
-        function applyNitroPdfCleanups(pdfDoc, options) {
-            try {
-                const { PDFName } = PDFLib;
-                
-                if (options.removeFormFields) {
-                    pdfDoc.catalog.delete(PDFName.of('AcroForm'));
-                }
-                if (options.removeJavaScripts) {
-                    pdfDoc.catalog.delete(PDFName.of('Names'));
-                    pdfDoc.catalog.delete(PDFName.of('OpenAction'));
-                    pdfDoc.catalog.delete(PDFName.of('AA'));
-                }
-                if (options.removeBookmarks) {
-                    pdfDoc.catalog.delete(PDFName.of('Outlines'));
-                }
-                if (options.removeAttachments) {
-                    pdfDoc.catalog.delete(PDFName.of('EmbeddedFiles'));
-                    pdfDoc.catalog.delete(PDFName.of('AF'));
-                }
-                
-                const pages = pdfDoc.getPages();
-                pages.forEach(page => {
-                    if (options.removeAnnotations || options.removeLinks) {
-                        page.node.delete(PDFName.of('Annots'));
-                    }
-                    if (options.removeThumbnails) {
-                        page.node.delete(PDFName.of('Thumb'));
-                    }
-                });
-            } catch (e) {
-                console.warn("Lỗi khi làm sạch cấu trúc PDF:", e);
+        // UI Toast Notification
+        function showToast(message, type = 'info') {
+            let container = document.getElementById('toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toast-container';
+                container.className = 'fixed bottom-5 right-5 z-[100] flex flex-col gap-2 max-w-sm pointer-events-none';
+                document.body.appendChild(container);
             }
-        }
-
-        function getNitroOptionsFromUI() {
-            return {
-                removeAnnotations: document.getElementById('nitro-annots')?.checked ?? true,
-                removeLinks: document.getElementById('nitro-links')?.checked ?? true,
-                removeJavaScripts: document.getElementById('nitro-js')?.checked ?? true,
-                removeBookmarks: document.getElementById('nitro-bookmarks')?.checked ?? true,
-                removeAttachments: document.getElementById('nitro-attachments')?.checked ?? true,
-                removeThumbnails: document.getElementById('nitro-thumbs')?.checked ?? true,
-                removeFormFields: document.getElementById('nitro-links')?.checked ?? true,
-                removeUnusedObjects: document.getElementById('nitro-unused')?.checked ?? true
-            };
-        }
-
-        function detectPaperFormat(widthMm, heightMm) {
-            const minDim = Math.min(widthMm, heightMm);
-            const maxDim = Math.max(widthMm, heightMm);
-
-            if (Math.abs(minDim - 210) < 20 && Math.abs(maxDim - 297) < 20) return 'A4';
-            if (Math.abs(minDim - 297) < 20 && Math.abs(maxDim - 420) < 20) return 'A3';
-            if (Math.abs(minDim - 420) < 20 && Math.abs(maxDim - 594) < 20) return 'A2';
-            if (Math.abs(minDim - 594) < 20 && Math.abs(maxDim - 841) < 20) return 'A1';
-            if (Math.abs(minDim - 841) < 20 && Math.abs(maxDim - 1189) < 20) return 'A0';
             
-            const ratio = maxDim / (minDim || 1);
-            if (Math.abs(ratio - (16/9)) < 0.15) return 'Màn hình 16:9';
-            if (Math.abs(ratio - (4/3)) < 0.15) return 'Màn hình 4:3';
+            const toast = document.createElement('div');
+            const bgColor = type === 'error' ? 'bg-rose-600' : type === 'success' ? 'bg-emerald-600' : 'bg-slate-800';
+            const icon = type === 'error' ? 'fa-circle-exclamation' : type === 'success' ? 'fa-circle-check' : 'fa-circle-info';
+            
+            toast.className = `${bgColor} text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 transform translate-y-4 opacity-0 transition-all duration-300 pointer-events-auto`;
+            toast.innerHTML = `<i class="fa-solid ${icon} text-base"></i> <span>${escapeHtml(message)}</span>`;
+            
+            container.appendChild(toast);
+            
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-4', 'opacity-0');
+            });
+            
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
 
-            return 'Tùy chỉnh';
+        // Tùy chọn cài đặt lấy từ giao diện. 
+        // Các tính năng dọn rác mặc định trả về true nếu ô check được tick (hoặc không tìm thấy)
+        function getGlobalSettingsCopy() {
+            return {
+                preset: document.getElementById('global-preset')?.value || 'balanced',
+                targetSize: document.getElementById('global-resize')?.value || 'NONE',
+                dpi: parseInt(document.getElementById('global-dpi')?.value || '120'),
+                quality: parseInt(document.getElementById('global-quality')?.value || '70'),
+                optHidden: document.getElementById('global-opt-hidden')?.checked ?? true,
+                optAnnots: document.getElementById('global-opt-annots')?.checked ?? true,
+                optLinks: document.getElementById('global-opt-links')?.checked ?? true,
+                optJS: document.getElementById('global-opt-js')?.checked ?? true,
+                optBookmarks: document.getElementById('global-opt-bookmarks')?.checked ?? true,
+                optAttach: document.getElementById('global-opt-attach')?.checked ?? true,
+                optThumb: document.getElementById('global-opt-thumb')?.checked ?? true,
+                optUnused: document.getElementById('global-opt-unused')?.checked ?? true
+            };
         }
 
         function applyGlobalPreset() {
             const preset = document.getElementById('global-preset').value;
-            const dpi = document.getElementById('global-dpi');
-            const quality = document.getElementById('global-quality');
+            const globalAdvanced = document.getElementById('global-advanced-container');
 
             if (preset === 'super') {
-                dpi.value = '120';
-                quality.value = '60';
-            } else if (preset === 'hybrid') {
-                dpi.value = '120';
-                quality.value = '70';
-            } else if (preset === 'balanced') {
-                dpi.value = '150';
-                quality.value = '75';
-            } else if (preset === 'vector') {
-                dpi.value = '200';
-                quality.value = '85';
+                if (globalAdvanced) globalAdvanced.classList.add('hidden');
+            } else {
+                if (globalAdvanced) globalAdvanced.classList.remove('hidden');
             }
+        }
+
+        function applyGlobalToAllFiles() {
+            const globalSettings = getGlobalSettingsCopy();
+            filesQueue.forEach(item => {
+                item.settings = { ...globalSettings };
+            });
+            updateQueueUI();
+            showToast('Đã áp dụng cấu hình chung cho toàn bộ file', 'success');
         }
 
         function resetGlobalSettings() {
-            document.getElementById('global-preset').value = 'super';
-            document.getElementById('global-resize').value = 'A4';
+            document.getElementById('global-preset').value = 'balanced';
+            document.getElementById('global-resize').value = 'NONE';
             document.getElementById('global-dpi').value = '120';
             document.getElementById('global-quality').value = '70';
+            
+            document.getElementById('global-opt-hidden').checked = true;
+            document.getElementById('global-opt-annots').checked = true;
+            document.getElementById('global-opt-links').checked = true;
+            document.getElementById('global-opt-js').checked = true;
+            document.getElementById('global-opt-bookmarks').checked = true;
+            document.getElementById('global-opt-attach').checked = true;
+            document.getElementById('global-opt-thumb').checked = true;
+            document.getElementById('global-opt-unused').checked = true;
+            
+            applyGlobalPreset();
+            applyGlobalToAllFiles();
         }
 
-        // Apply Global Config to ALL existing files in queue
-        function applyGlobalToAllFiles() {
-            if (filesQueue.length === 0) {
-                alert('Chưa có file nào trong danh sách!');
-                return;
-            }
-
-            const preset = document.getElementById('global-preset').value;
-            const resizeMode = document.getElementById('global-resize').value;
-            const dpi = parseInt(document.getElementById('global-dpi').value);
-            const quality = parseInt(document.getElementById('global-quality').value) / 100;
-            const nitroOpts = getNitroOptionsFromUI();
-
-            filesQueue.forEach(item => {
-                item.settings.preset = preset;
-                item.settings.resizeMode = resizeMode;
-                item.settings.dpi = dpi;
-                item.settings.quality = quality;
-                item.settings.nitro = { ...nitroOpts };
+        function setupDropZone() {
+            const dropZone = document.getElementById('drop-zone');
+            
+            dropZone.addEventListener('click', () => {
+                document.getElementById('file-input').click();
             });
 
-            renderQueue();
-            alert(`Đã đồng bộ cấu hình mặc định cho tất cả ${filesQueue.length} file!`);
-        }
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.add('border-blue-600', 'bg-blue-100/60');
+            });
 
-        function handleDragOver(e) {
-            e.preventDefault();
-            document.getElementById('drop-zone').classList.add('drag-active');
-        }
+            dropZone.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.remove('border-blue-600', 'bg-blue-100/60');
+            });
 
-        function handleDragLeave(e) {
-            e.preventDefault();
-            document.getElementById('drop-zone').classList.remove('drag-active');
-        }
-
-        function handleDrop(e) {
-            e.preventDefault();
-            document.getElementById('drop-zone').classList.remove('drag-active');
-            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                addFilesToQueue(e.dataTransfer.files);
-            }
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.remove('border-blue-600', 'bg-blue-100/60');
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    handleFiles(Array.from(e.dataTransfer.files));
+                }
+            });
         }
 
         function handleFileSelect(e) {
             if (e.target.files && e.target.files.length > 0) {
-                addFilesToQueue(e.target.files);
+                handleFiles(Array.from(e.target.files));
+                e.target.value = ''; 
             }
         }
 
-        async function addFilesToQueue(fileList) {
-            const globalResize = document.getElementById('global-resize').value;
-            const globalPreset = document.getElementById('global-preset').value;
-            const globalDpi = parseInt(document.getElementById('global-dpi').value);
-            const globalQuality = parseInt(document.getElementById('global-quality').value) / 100;
-            const nitroOpts = getNitroOptionsFromUI();
+        function handleMergeFiles(e) {
+            if (e.target.files && e.target.files.length > 0) {
+                handleFiles(Array.from(e.target.files));
+                e.target.value = '';
+                // The handleFiles calls updateQueueUI which we will hook to update Merge Modal if open
+                setTimeout(renderMergeGrid, 300); // slight delay to allow inspection
+            }
+        }
 
-            for (let file of fileList) {
-                if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-                    alert(`File "${file.name}" không phải định dạng PDF!`);
-                    continue;
-                }
-
-                if (filesQueue.some(f => f.file.name === file.name && f.file.size === file.size)) continue;
-
-                let origWidthMm = 0;
-                let origHeightMm = 0;
-                let paperFormat = 'Đang phân tích...';
-                let pageCount = 0;
-
-                try {
-                    const arrayBuffer = await file.arrayBuffer();
-                    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                    pageCount = pdfDoc.numPages;
-                    
-                    const firstPage = await pdfDoc.getPage(1);
-                    const viewport = firstPage.getViewport({ scale: 1.0 });
-                    origWidthMm = Math.round(viewport.width * PT_TO_MM);
-                    origHeightMm = Math.round(viewport.height * PT_TO_MM);
-                    paperFormat = detectPaperFormat(origWidthMm, origHeightMm);
-                } catch (err) {
-                    console.error("Không đọc được metadata PDF:", err);
-                }
-
-                const fileObj = {
-                    id: 'file_' + Math.random().toString(36).substr(2, 9),
-                    file: file,
-                    status: 'ready',
-                    progress: 0,
-                    statusText: 'Sẵn sàng',
-                    originalSizeFormatted: formatBytes(file.size),
-                    origWidthMm: origWidthMm,
-                    origHeightMm: origHeightMm,
-                    paperFormat: paperFormat,
-                    pageCount: pageCount,
-                    
-                    settings: {
-                        preset: globalPreset,
-                        resizeMode: globalResize,
-                        dpi: globalDpi,
-                        quality: globalQuality,
-                        nitro: { ...nitroOpts }
-                    },
-
-                    processedBlob: null,
-                    processedSizeFormatted: '--',
-                    optWidthMm: '--',
-                    optHeightMm: '--',
-                    savings: 0,
-                    showSettingsPanel: false
-                };
-
-                filesQueue.push(fileObj);
+        async function handleFiles(files) {
+            const pdfFiles = files.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+            
+            if (pdfFiles.length === 0) {
+                showToast('Vui lòng chọn hoặc kéo thả file định dạng PDF!', 'error');
+                return;
             }
 
-            renderQueue();
+            for (const file of pdfFiles) {
+                const id = 'file_' + Math.random().toString(36).substring(2, 9);
+                const fileData = {
+                    id: id,
+                    file: file,
+                    name: file.name,
+                    origSize: file.size,
+                    optSize: null,
+                    pageCount: 0,
+                    origWidthMM: 0,
+                    origHeightMM: 0,
+                    detectedPaper: 'Custom',
+                    status: 'pending',
+                    optArrayBuffer: null,
+                    settings: getGlobalSettingsCopy()
+                };
+
+                filesQueue.push(fileData);
+                inspectPdfDimensions(fileData);
+            }
+
+            updateQueueUI();
+        }
+
+        function detectPaperSize(w, h) {
+            const longE = Math.max(w, h);
+            const shortE = Math.min(w, h);
+            
+            for (const [key, std] of Object.entries(PAPER_STANDARDS_MM)) {
+                if (Math.abs(longE - std.longEdge) < 15 && Math.abs(shortE - (std.width < std.height ? std.width : std.height)) < 15) {
+                    return key;
+                }
+            }
+            return 'Tùy chỉnh';
+        }
+
+        async function inspectPdfDimensions(fileData) {
+            try {
+                const arrayBuffer = await fileData.file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
+                fileData.pageCount = pdf.numPages;
+
+                if (pdf.numPages > 0) {
+                    const page1 = await pdf.getPage(1);
+                    const viewport = page1.getViewport({ scale: 1.0 });
+                    fileData.origWidthMM = Math.round(viewport.width * 0.352778);
+                    fileData.origHeightMM = Math.round(viewport.height * 0.352778);
+                    fileData.detectedPaper = detectPaperSize(fileData.origWidthMM, fileData.origHeightMM);
+                    page1.cleanup(); 
+                }
+                pdf.destroy(); 
+            } catch (err) {
+                console.error("Error inspecting PDF:", err);
+            }
+            updateQueueUI();
+            if (document.getElementById('merge-modal').classList.contains('flex')) {
+                renderMergeGrid();
+            }
         }
 
         function removeFileFromQueue(id) {
             filesQueue = filesQueue.filter(f => f.id !== id);
-            renderQueue();
+            updateQueueUI();
         }
-
-        function clearQueue() {
-            filesQueue = [];
-            renderQueue();
-            document.getElementById('results-container').classList.add('hidden');
-        }
-
-        function toggleFileSettings(id) {
-            const item = filesQueue.find(f => f.id === id);
-            if (item) {
-                item.showSettingsPanel = !item.showSettingsPanel;
-                renderQueue();
+        
+        function toggleSettingsPanel(id) {
+            const panel = document.getElementById(`settings-panel-${id}`);
+            if (panel) {
+                panel.classList.toggle('hidden');
             }
         }
 
-        function updateFileSetting(id, key, value) {
-            const item = filesQueue.find(f => f.id === id);
-            if (!item) return;
-
-            if (key === 'preset') item.settings.preset = value;
-            else if (key === 'resizeMode') item.settings.resizeMode = value;
-            else if (key === 'dpi') item.settings.dpi = parseInt(value);
-            else if (key === 'quality') item.settings.quality = parseFloat(value);
-            else if (key.startsWith('nitro-')) {
-                const nitroKey = key.replace('nitro-', '');
-                if (!item.settings.nitro) item.settings.nitro = getNitroOptionsFromUI();
-                item.settings.nitro[nitroKey] = value;
+        function moveFile(index, direction) {
+            const newIndex = index + direction;
+            if (newIndex >= 0 && newIndex < filesQueue.length) {
+                const temp = filesQueue[newIndex];
+                filesQueue[newIndex] = filesQueue[index];
+                filesQueue[index] = temp;
+                updateQueueUI();
             }
         }
 
-        function renderQueue() {
-            const container = document.getElementById('queue-container');
-            const listEl = document.getElementById('file-list');
-            const countTag = document.getElementById('file-count-tag');
-            const summaryText = document.getElementById('total-stat-summary');
+        function updateQueueUI() {
+            const container = document.getElementById('file-queue-container');
+            const actionsBar = document.getElementById('queue-actions-bar');
+            const countBadge = document.getElementById('queue-count-badge');
+            const savingsSummary = document.getElementById('queue-savings-summary');
+            const downloadAllBtn = document.getElementById('download-all-btn');
 
             if (filesQueue.length === 0) {
-                container.classList.add('hidden');
-                container.classList.remove('flex');
+                actionsBar.classList.add('hidden');
+                container.innerHTML = `
+                    <div class="text-center py-12 text-slate-400 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                        <i class="fa-solid fa-folder-open text-4xl mb-3 text-slate-300"></i>
+                        <p class="text-sm font-medium">Chưa có file PDF nào được nộp. Kéo thả file lên trên để bắt đầu!</p>
+                    </div>
+                `;
                 return;
             }
 
-            container.classList.remove('hidden');
-            container.classList.add('flex');
-            countTag.innerText = `${filesQueue.length} file`;
+            actionsBar.classList.remove('hidden');
+            countBadge.textContent = `${filesQueue.length} File`;
 
-            let totalBytes = filesQueue.reduce((acc, f) => acc + f.file.size, 0);
-            summaryText.innerText = `Tổng dung lượng ban đầu: ${formatBytes(totalBytes)}`;
+            let totalOrig = 0;
+            let totalOpt = 0;
+            let doneCount = 0;
 
-            listEl.innerHTML = filesQueue.map((item) => `
-                <div class="p-3.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl transition flex flex-col gap-3">
-                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                        
-                        <!-- File Meta Info -->
-                        <div class="flex items-start gap-3 min-w-0">
-                            <div class="w-10 h-10 rounded-xl ${item.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'} flex items-center justify-center flex-shrink-0 font-bold text-base mt-0.5">
-                                <i class="fa-solid ${item.status === 'completed' ? 'fa-file-circle-check' : 'fa-file-pdf'}"></i>
-                            </div>
-                            <div class="min-w-0">
-                                <div class="flex items-center gap-2 flex-wrap">
-                                    <h4 class="text-xs font-bold text-slate-800 truncate max-w-xs sm:max-w-md">${escapeHtml(item.file.name)}</h4>
-                                    ${item.origWidthMm > 0 ? `
-                                        <span class="text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                            <i class="fa-solid fa-ruler-combined"></i> Khổ gốc: ${item.origWidthMm} × ${item.origHeightMm} mm (${item.paperFormat}) • ${item.pageCount} trang
+            filesQueue.forEach(item => {
+                totalOrig += item.origSize || 0;
+                if (item.optSize) {
+                    totalOpt += item.optSize;
+                    doneCount++;
+                }
+            });
+
+            if (doneCount > 0) {
+                const saved = totalOrig - totalOpt;
+                const pct = totalOrig > 0 ? Math.round((saved / totalOrig) * 100) : 0;
+                savingsSummary.textContent = `Đã tối ưu ${doneCount}/${filesQueue.length} file • Giảm ${formatBytes(saved)} (${pct}%)`;
+                downloadAllBtn.disabled = false;
+            } else {
+                savingsSummary.textContent = 'Sẵn sàng tối ưu dung lượng';
+                downloadAllBtn.disabled = true;
+            }
+
+            container.innerHTML = filesQueue.map((item, index) => {
+                const st = item.settings;
+                const isDone = item.status === 'done';
+                const isProcessing = item.status === 'processing';
+                const isError = item.status === 'error';
+
+                let statusBadge = `<span class="bg-amber-100 text-amber-800 text-[11px] font-semibold px-2.5 py-1 rounded-lg">Chờ xử lý</span>`;
+                if (isProcessing) statusBadge = `<span class="bg-blue-100 text-blue-800 text-[11px] font-semibold px-2.5 py-1 rounded-lg animate-pulse"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang xử lý...</span>`;
+                if (isDone) statusBadge = `<span class="bg-green-100 text-green-800 text-[11px] font-semibold px-2.5 py-1 rounded-lg"><i class="fa-solid fa-check mr-1"></i> Hoàn thành</span>`;
+                if (isError) statusBadge = `<span class="bg-rose-100 text-rose-800 text-[11px] font-semibold px-2.5 py-1 rounded-lg"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Lỗi</span>`;
+
+                let sizeInfo = `Gốc: <strong>${formatBytes(item.origSize)}</strong>`;
+                if (item.optSize !== null) {
+                    const diff = item.origSize - item.optSize;
+                    const diffPct = Math.round((diff / item.origSize) * 100);
+                    const colorClass = diff >= 0 ? 'text-green-600' : 'text-rose-600';
+                    sizeInfo = `Gốc: <strong>${formatBytes(item.origSize)}</strong> ➔ Tối ưu: <strong class="${colorClass}">${formatBytes(item.optSize)} (${diffPct > 0 ? '-' : ''}${diffPct}%)</strong>`;
+                }
+
+                return `
+                    <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                        <!-- Top Info Row -->
+                        <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-4 w-full">
+                            <div class="flex items-start gap-3 flex-1 min-w-0">
+                                <div class="w-10 h-10 rounded-xl ${isDone ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'} flex items-center justify-center font-bold shrink-0 mt-0.5">
+                                    <i class="fa-solid ${isDone ? 'fa-file-circle-check' : 'fa-file-pdf'} text-lg"></i>
+                                </div>
+                                <div class="min-w-0 w-full">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <h4 class="font-bold text-slate-800 text-sm truncate max-w-full" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</h4>
+                                        ${statusBadge}
+                                    </div>
+                                    <div class="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-2">
+                                        <span class="bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md text-[11px] text-slate-600">
+                                            📐 <strong>${item.origWidthMM} × ${item.origHeightMM} mm</strong> (${item.detectedPaper}) • ${item.pageCount} trang
                                         </span>
-                                    ` : ''}
-                                </div>
-
-                                <div class="flex items-center gap-2 text-[11px] text-slate-500 mt-1 flex-wrap">
-                                    <span>Gốc: <b class="text-slate-700">${item.originalSizeFormatted}</b></span>
-                                    ${item.status === 'completed' ? `
-                                        <span>➔ Tối ưu: <b class="text-emerald-600">${item.processedSizeFormatted} (-${item.savings}%)</b></span>
-                                        <span>•</span>
-                                        <span class="text-emerald-600 font-bold">Kích thước mới: ${item.optWidthMm} × ${item.optHeightMm} mm</span>
-                                    ` : `
-                                        <span>•</span>
-                                        <span id="status-text-${item.id}" class="text-blue-600 font-medium">${item.statusText}</span>
-                                    `}
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Action Buttons -->
-                        <div class="flex items-center gap-2 w-full sm:w-auto justify-end flex-shrink-0">
-                            ${item.status === 'processing' ? `
-                                <div class="w-28 bg-slate-100 h-2 rounded-full overflow-hidden">
-                                    <div id="bar-${item.id}" class="bg-blue-600 h-full transition-all duration-300" style="width: ${item.progress}%"></div>
-                                </div>
-                            ` : ''}
-
-                            ${item.status === 'completed' ? `
-                                <button onclick="previewFileComparison('${item.id}')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1">
-                                    <i class="fa-solid fa-eye text-blue-600"></i> Xem thử
-                                </button>
-                                <button onclick="downloadSingleFile('${item.id}')" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1">
-                                    <i class="fa-solid fa-download"></i> Tải về
-                                </button>
-                            ` : ''}
-
-                            ${item.status !== 'processing' ? `
-                                <button onclick="toggleFileSettings('${item.id}')" class="text-xs border border-slate-200 hover:bg-slate-50 text-slate-700 px-2.5 py-1.5 rounded-lg transition font-medium flex items-center gap-1">
-                                    <i class="fa-solid fa-gear text-slate-500"></i> Cài đặt
-                                </button>
-
-                                <button onclick="processSingleFile('${item.id}')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1 shadow-sm">
-                                    <i class="fa-solid fa-bolt"></i> Tối ưu
-                                </button>
-
-                                <button onclick="removeFileFromQueue('${item.id}')" class="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg transition" title="Xóa">
-                                    <i class="fa-solid fa-xmark text-sm"></i>
-                                </button>
-                            ` : ''}
-                        </div>
-                    </div>
-
-                    <!-- Individual File Settings Panel -->
-                    ${item.showSettingsPanel ? `
-                        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-3 text-xs mt-1">
-                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div>
-                                    <label class="block font-semibold text-slate-600 mb-1">Chế độ nén:</label>
-                                    <select onchange="updateFileSetting('${item.id}', 'preset', this.value)" class="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
-                                        <option value="super" ${item.settings.preset === 'super' ? 'selected' : ''}>⚡ Siêu giảm (Nén toàn bộ JPEG)</option>
-                                        <option value="hybrid" ${item.settings.preset === 'hybrid' ? 'selected' : ''}>🖼️ Phẳng nền sang 1 hình, Giữ chữ bôi đen</option>
-                                        <option value="balanced" ${item.settings.preset === 'balanced' ? 'selected' : ''}>⚖️ Cân bằng (Nén nhẹ ảnh gốc)</option>
-                                        <option value="vector" ${item.settings.preset === 'vector' ? 'selected' : ''}>📐 Giữ Vector gốc</option>
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label class="block font-semibold text-slate-600 mb-1">Resize khổ giấy:</label>
-                                    <select onchange="updateFileSetting('${item.id}', 'resizeMode', this.value)" class="w-full bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
-                                        <option value="A4" ${item.settings.resizeMode === 'A4' ? 'selected' : ''}>Khổ A4 (210×297 mm)</option>
-                                        <option value="A3" ${item.settings.resizeMode === 'A3' ? 'selected' : ''}>Khổ A3 (297×420 mm)</option>
-                                        <option value="PRESENTATION_169" ${item.settings.resizeMode === 'PRESENTATION_169' ? 'selected' : ''}>Thuyết trình 16:9</option>
-                                        <option value="PRESENTATION_43" ${item.settings.resizeMode === 'PRESENTATION_43' ? 'selected' : ''}>Thuyết trình 4:3</option>
-                                        <option value="half" ${item.settings.resizeMode === 'half' ? 'selected' : ''}>Giảm 50% kích thước</option>
-                                        <option value="scale75" ${item.settings.resizeMode === 'scale75' ? 'selected' : ''}>Giảm 25% kích thước</option>
-                                        <option value="original" ${item.settings.resizeMode === 'original' ? 'selected' : ''}>Giữ nguyên khổ gốc</option>
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label class="block font-semibold text-slate-600 mb-1">DPI & Chất lượng:</label>
-                                    <div class="flex gap-1.5">
-                                        <select onchange="updateFileSetting('${item.id}', 'dpi', this.value)" class="w-1/2 bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
-                                            <option value="72" ${item.settings.dpi === 72 ? 'selected' : ''}>72 DPI</option>
-                                            <option value="96" ${item.settings.dpi === 96 ? 'selected' : ''}>96 DPI</option>
-                                            <option value="120" ${item.settings.dpi === 120 ? 'selected' : ''}>120 DPI</option>
-                                            <option value="150" ${item.settings.dpi === 150 ? 'selected' : ''}>150 DPI</option>
-                                            <option value="200" ${item.settings.dpi === 200 ? 'selected' : ''}>200 DPI</option>
-                                            <option value="300" ${item.settings.dpi === 300 ? 'selected' : ''}>300 DPI</option>
-                                        </select>
-                                        <select onchange="updateFileSetting('${item.id}', 'quality', this.value)" class="w-1/2 bg-white border border-slate-200 rounded-lg p-1.5 text-slate-800">
-                                            <option value="0.4" ${item.settings.quality === 0.4 ? 'selected' : ''}>CL 40%</option>
-                                            <option value="0.5" ${item.settings.quality === 0.5 ? 'selected' : ''}>CL 50%</option>
-                                            <option value="0.6" ${item.settings.quality === 0.6 ? 'selected' : ''}>CL 60%</option>
-                                            <option value="0.7" ${item.settings.quality === 0.7 ? 'selected' : ''}>CL 70%</option>
-                                            <option value="0.8" ${item.settings.quality === 0.8 ? 'selected' : ''}>CL 80%</option>
-                                            <option value="0.9" ${item.settings.quality === 0.9 ? 'selected' : ''}>CL 90%</option>
-                                            <option value="1.0" ${item.settings.quality === 1.0 ? 'selected' : ''}>CL 100%</option>
-                                        </select>
+                                        <span>${sizeInfo}</span>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Individual Advanced Toggles -->
-                            <div class="pt-2 border-t border-slate-200">
-                                <label class="block font-bold text-[11px] text-slate-700 mb-1.5">Tùy chọn Nâng cao cho file này:</label>
-                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-600">
-                                    <label class="flex items-center gap-1.5 cursor-pointer">
-                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeAnnotations', this.checked)" ${item.settings.nitro?.removeAnnotations !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
-                                        <span>Xóa Ghi chú</span>
-                                    </label>
-                                    <label class="flex items-center gap-1.5 cursor-pointer">
-                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeLinks', this.checked)" ${item.settings.nitro?.removeLinks !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
-                                        <span>Xóa Links & Forms</span>
-                                    </label>
-                                    <label class="flex items-center gap-1.5 cursor-pointer">
-                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeJavaScripts', this.checked)" ${item.settings.nitro?.removeJavaScripts !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
-                                        <span>Xóa JavaScripts</span>
-                                    </label>
-                                    <label class="flex items-center gap-1.5 cursor-pointer">
-                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeBookmarks', this.checked)" ${item.settings.nitro?.removeBookmarks !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
-                                        <span>Xóa Bookmarks</span>
-                                    </label>
-                                    <label class="flex items-center gap-1.5 cursor-pointer">
-                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeAttachments', this.checked)" ${item.settings.nitro?.removeAttachments !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
-                                        <span>Xóa File đính kèm</span>
-                                    </label>
-                                    <label class="flex items-center gap-1.5 cursor-pointer">
-                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeThumbnails', this.checked)" ${item.settings.nitro?.removeThumbnails !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
-                                        <span>Xóa Thumbnails</span>
-                                    </label>
-                                    <label class="flex items-center gap-1.5 cursor-pointer">
-                                        <input type="checkbox" onchange="updateFileSetting('${item.id}', 'nitro-removeUnusedObjects', this.checked)" ${item.settings.nitro?.removeUnusedObjects !== false ? 'checked' : ''} class="rounded text-blue-600 w-3.5 h-3.5">
-                                        <span>Dọn dẹp rác</span>
-                                    </label>
+                            <!-- Actions cho File (Được căn lề phải bằng ml-auto và justify-end) -->
+                            <div class="flex flex-wrap items-center justify-end gap-2 shrink-0 w-full xl:w-auto ml-auto bg-slate-50 p-1.5 rounded-xl border border-slate-100">
+                                <!-- Nút thay đổi thứ tự -->
+                                <div class="flex items-center gap-1 bg-white px-1 py-1 rounded-lg border border-slate-200">
+                                    <button onclick="moveFile(${index}, -1)" class="w-7 h-7 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md flex items-center justify-center transition-colors" title="Di chuyển lên">
+                                        <i class="fa-solid fa-arrow-up text-xs"></i>
+                                    </button>
+                                    <button onclick="moveFile(${index}, 1)" class="w-7 h-7 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md flex items-center justify-center transition-colors" title="Di chuyển xuống">
+                                        <i class="fa-solid fa-arrow-down text-xs"></i>
+                                    </button>
                                 </div>
+                                
+                                <button onclick="toggleSettingsPanel('${item.id}')" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5">
+                                    <i class="fa-solid fa-gear"></i> Cài đặt
+                                </button>
+                                
+                                <button onclick="openPreviewModal(${index})" ${!isDone ? 'disabled' : ''} class="bg-white hover:bg-slate-50 border border-slate-200 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5">
+                                    <i class="fa-solid fa-eye"></i> Xem
+                                </button>
+                                
+                                <button onclick="downloadSingleFile(${index})" ${!isDone ? 'disabled' : ''} class="bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5">
+                                    <i class="fa-solid fa-download"></i> Tải
+                                </button>
+                                
+                                <button onclick="processSingleFile(${index})" ${isProcessing ? 'disabled' : ''} class="bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-xs font-bold shadow-sm shadow-blue-500/20 transition-all flex items-center gap-1.5">
+                                    <i class="fa-solid fa-bolt"></i> Tối ưu
+                                </button>
+                                
+                                <button onclick="removeFileFromQueue('${item.id}')" class="w-8 h-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg flex items-center justify-center transition-colors border border-transparent hover:border-rose-200">
+                                    <i class="fa-solid fa-trash-can text-sm"></i>
+                                </button>
                             </div>
                         </div>
-                    ` : ''}
-                </div>
-            `).join('');
+
+                        <!-- Progress Bar Container for this File -->
+                        ${isProcessing ? `
+                        <div class="mt-3 p-3 bg-blue-50/80 border border-blue-200/80 rounded-xl">
+                            <div class="flex items-center justify-between text-xs font-semibold text-blue-800 mb-1.5">
+                                <span id="progress-text-${item.id}"><i class="fa-solid fa-spinner fa-spin mr-1"></i> ${item.progressText || 'Đang xử lý...'}</span>
+                                <span id="progress-pct-${item.id}" class="font-bold">${item.progressPct || 0}%</span>
+                            </div>
+                            <div class="w-full bg-blue-200 rounded-full h-2.5 overflow-hidden">
+                                <div id="progress-bar-${item.id}" class="bg-gradient-to-r from-blue-600 to-indigo-600 h-2.5 rounded-full transition-all duration-200 shadow-sm" style="width: ${item.progressPct || 0}%"></div>
+                            </div>
+                        </div>
+                        ` : ''}
+
+                        <!-- Per-File Configuration Panel (Ẩn mặc định) -->
+                        <div id="settings-panel-${item.id}" class="hidden mt-4 bg-slate-50 border border-slate-200/80 rounded-xl p-4 text-xs">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                                <div>
+                                    <label class="block font-semibold text-[11px] text-slate-500 mb-1">Chế độ nén:</label>
+                                    <select onchange="updateItemSetting('${item.id}', 'preset', this.value)" class="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800">
+                                        <option value="balanced" ${st.preset === 'balanced' ? 'selected' : ''}>⚖️ Nén chuẩn (Giữ Vector/CAD & Nén ảnh)</option>
+                                        <option value="super" ${st.preset === 'super' ? 'selected' : ''}>⚡ Rasterize (JPEG)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block font-semibold text-[11px] text-slate-500 mb-1">Kích thước (Fit & Center):</label>
+                                    <select onchange="updateItemSetting('${item.id}', 'targetSize', this.value)" class="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800">
+                                        <option value="A4" ${st.targetSize === 'A4' ? 'selected' : ''}>A4 (210×297 mm)</option>
+                                        <option value="A3" ${st.targetSize === 'A3' ? 'selected' : ''}>A3 (297×420 mm)</option>
+                                        <option value="A2" ${st.targetSize === 'A2' ? 'selected' : ''}>A2 (420×594 mm)</option>
+                                        <option value="A1" ${st.targetSize === 'A1' ? 'selected' : ''}>A1 (594×841 mm)</option>
+                                        <option value="A0" ${st.targetSize === 'A0' ? 'selected' : ''}>A0 (841×1189 mm)</option>
+                                        <option value="SLIDE_16_9" ${st.targetSize === 'SLIDE_16_9' ? 'selected' : ''}>Slide 16:9</option>
+                                        <option value="SLIDE_4_3" ${st.targetSize === 'SLIDE_4_3' ? 'selected' : ''}>Slide 4:3</option>
+                                        <option value="NONE" ${st.targetSize === 'NONE' ? 'selected' : ''}>Giữ nguyên khổ gốc</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block font-semibold text-[11px] text-slate-500 mb-1">DPI (Độ nét):</label>
+                                    <select onchange="updateItemSetting('${item.id}', 'dpi', parseInt(this.value))" class="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800">
+                                        <option value="72" ${st.dpi === 72 ? 'selected' : ''}>72 DPI</option>
+                                        <option value="96" ${st.dpi === 96 ? 'selected' : ''}>96 DPI</option>
+                                        <option value="120" ${st.dpi === 120 ? 'selected' : ''}>120 DPI</option>
+                                        <option value="150" ${st.dpi === 150 ? 'selected' : ''}>150 DPI</option>
+                                        <option value="200" ${st.dpi === 200 ? 'selected' : ''}>200 DPI</option>
+                                        <option value="300" ${st.dpi === 300 ? 'selected' : ''}>300 DPI</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block font-semibold text-[11px] text-slate-500 mb-1">CL JPEG (Chỉ áp dụng ảnh):</label>
+                                    <select onchange="updateItemSetting('${item.id}', 'quality', parseInt(this.value))" class="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800">
+                                        <option value="40" ${st.quality === 40 ? 'selected' : ''}>40%</option>
+                                        <option value="50" ${st.quality === 50 ? 'selected' : ''}>50%</option>
+                                        <option value="60" ${st.quality === 60 ? 'selected' : ''}>60%</option>
+                                        <option value="70" ${st.quality === 70 ? 'selected' : ''}>70%</option>
+                                        <option value="80" ${st.quality === 80 ? 'selected' : ''}>80%</option>
+                                        <option value="100" ${st.quality === 100 ? 'selected' : ''}>100%</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- 8 Advanced checkboxes for each file (Không khóa, cho phép tùy chọn) -->
+                            <div id="advanced-options-${item.id}" class="border-t border-slate-200/80 pt-2 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2 text-[10px] text-slate-600 ${st.preset === 'super' ? 'hidden' : ''}">
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                    <input type="checkbox" ${st.optHidden ? 'checked' : ''} onchange="toggleItemAdvanced('${item.id}', 'optHidden', this.checked)" class="rounded text-blue-600 focus:ring-blue-500">
+                                    <span class="font-semibold text-blue-700">Đối tượng ẩn</span>
+                                </label>
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                    <input type="checkbox" ${st.optAnnots ? 'checked' : ''} onchange="toggleItemAdvanced('${item.id}', 'optAnnots', this.checked)" class="rounded text-blue-600 focus:ring-blue-500">
+                                    <span>Chú thích</span>
+                                </label>
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                    <input type="checkbox" ${st.optLinks ? 'checked' : ''} onchange="toggleItemAdvanced('${item.id}', 'optLinks', this.checked)" class="rounded text-blue-600 focus:ring-blue-500">
+                                    <span>Liên kết</span>
+                                </label>
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                    <input type="checkbox" ${st.optJS ? 'checked' : ''} onchange="toggleItemAdvanced('${item.id}', 'optJS', this.checked)" class="rounded text-blue-600 focus:ring-blue-500">
+                                    <span>JS Nhúng</span>
+                                </label>
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                    <input type="checkbox" ${st.optBookmarks ? 'checked' : ''} onchange="toggleItemAdvanced('${item.id}', 'optBookmarks', this.checked)" class="rounded text-blue-600 focus:ring-blue-500">
+                                    <span>Bookmarks</span>
+                                </label>
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                    <input type="checkbox" ${st.optAttach ? 'checked' : ''} onchange="toggleItemAdvanced('${item.id}', 'optAttach', this.checked)" class="rounded text-blue-600 focus:ring-blue-500">
+                                    <span>Đính kèm</span>
+                                </label>
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                    <input type="checkbox" ${st.optThumb ? 'checked' : ''} onchange="toggleItemAdvanced('${item.id}', 'optThumb', this.checked)" class="rounded text-blue-600 focus:ring-blue-500">
+                                    <span>Thumbnails</span>
+                                </label>
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                    <input type="checkbox" ${st.optUnused ? 'checked' : ''} onchange="toggleItemAdvanced('${item.id}', 'optUnused', this.checked)" class="rounded text-blue-600 focus:ring-blue-500">
+                                    <span class="font-semibold text-rose-600">Deep GC</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
-        async function processSingleFile(id) {
+        function updateItemSetting(id, key, value) {
             const item = filesQueue.find(f => f.id === id);
+            if (item) {
+                item.settings[key] = value;
+                if (key === 'preset') {
+                    const advEl = document.getElementById(`advanced-options-${id}`);
+                    if (advEl) {
+                        if (value === 'super') {
+                            advEl.classList.add('hidden');
+                        } else {
+                            advEl.classList.remove('hidden');
+                        }
+                    }
+                }
+            }
+        }
+
+        function toggleItemAdvanced(id, key, value) {
+            const item = filesQueue.find(f => f.id === id);
+            if (item) {
+                item.settings[key] = value;
+            }
+        }
+
+        async function updateItemProgress(id, current, total, text) {
+            const item = filesQueue.find(f => f.id === id);
+            if (!item) return;
+            const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+            item.progressPct = pct;
+            item.progressText = text;
+
+            const txtEl = document.getElementById(`progress-text-${id}`);
+            const pctEl = document.getElementById(`progress-pct-${id}`);
+            const barEl = document.getElementById(`progress-bar-${id}`);
+
+            if (txtEl) txtEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> ${text}`;
+            if (pctEl) pctEl.textContent = `${pct}%`;
+            if (barEl) barEl.style.width = `${pct}%`;
+
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        // =========================================================================
+        // KHỞI TẠO WEB WORKER (ĐÃ FIX: Dọn rác, Nén ảnh thông minh, Bounding Box Scale)
+        // =========================================================================
+        const pdfWorkerBlob = new Blob([`(${function() {
+            self.importScripts('https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js');
+            
+            const PAPER_STANDARDS_MM = {
+                'A0': { width: 841, height: 1189, longEdge: 1189 }, 'A1': { width: 594, height: 841, longEdge: 841 },
+                'A2': { width: 420, height: 594, longEdge: 594 }, 'A3': { width: 297, height: 420, longEdge: 420 },
+                'A4': { width: 210, height: 297, longEdge: 297 }, 'SLIDE_16_9': { width: 338.67, height: 190.5, longEdge: 338.67 },
+                'SLIDE_4_3': { width: 297, height: 222.75, longEdge: 297 }
+            };
+
+            function calculateTargetSizeMM(wPt, hPt, targetKey) {
+                if (!targetKey || targetKey === 'NONE') return null;
+                const wMM = wPt * 0.352778; const hMM = hPt * 0.352778;
+                const isLandscape = wMM > hMM;
+                if (targetKey === 'HALF') return { width: wMM * 0.5, height: hMM * 0.5 };
+                if (targetKey === 'QUARTER') return { width: wMM * 0.75, height: hMM * 0.75 };
+                const std = PAPER_STANDARDS_MM[targetKey];
+                if (std) return { width: isLandscape ? Math.max(std.width, std.height) : Math.min(std.width, std.height), height: isLandscape ? Math.min(std.width, std.height) : Math.max(std.width, std.height) };
+                return null;
+            }
+
+            async function deepCleanMetadataAndResources(pdfDoc, settings, onProgress) {
+                if (!settings.optHidden && !settings.optUnused) return;
+                try {
+                    if (onProgress) onProgress(0, 1, 'Đang quét Deep Garbage Collection...');
+                    const { PDFName, PDFDict, PDFArray } = self.PDFLib;
+                    const catalog = pdfDoc.catalog;
+                    const context = pdfDoc.context;
+
+                    if (settings.optUnused) {
+                        const garbageKeys = ['Metadata', 'PieceInfo', 'StructTreeRoot', 'OutputIntents', 'OpenAction', 'Threads', 'ViewerPreferences', 'PageLabels', 'MarkInfo', 'Lang', 'Legal', 'Requirements', 'SpiderInfo'];
+                        for (const key of garbageKeys) { if (catalog.has(PDFName.of(key))) catalog.delete(PDFName.of(key)); }
+                    }
+
+                    if (catalog.has(PDFName.of('Names'))) {
+                        const namesDict = catalog.lookup(PDFName.of('Names'));
+                        if (namesDict instanceof PDFDict) {
+                            if (settings.optJS) namesDict.delete(PDFName.of('JavaScript'));
+                            if (settings.optAttach) namesDict.delete(PDFName.of('EmbeddedFiles'));
+                            if (settings.optBookmarks) namesDict.delete(PDFName.of('Dests'));
+                            if (namesDict.keys().length === 0) catalog.delete(PDFName.of('Names'));
+                        }
+                    }
+
+                    if (settings.optBookmarks && catalog.has(PDFName.of('Outlines'))) catalog.delete(PDFName.of('Outlines'));
+                    if (settings.optHidden && catalog.has(PDFName.of('OCProperties'))) catalog.delete(PDFName.of('OCProperties'));
+
+                    const pages = pdfDoc.getPages();
+                    for (let pIdx = 0; pIdx < pages.length; pIdx++) {
+                        const page = pages[pIdx];
+                        if (settings.optThumb) page.node.delete(PDFName.of('Thumb'));
+                        
+                        if (page.node.has(PDFName.of('Annots'))) {
+                            if (settings.optAnnots && settings.optLinks) {
+                                page.node.delete(PDFName.of('Annots'));
+                            } else if (settings.optAnnots || settings.optLinks) {
+                                const annots = page.node.lookup(PDFName.of('Annots'));
+                                if (annots instanceof PDFArray) {
+                                    const newAnnots = context.obj([]);
+                                    for (let i = 0; i < annots.size(); i++) {
+                                        const annotRef = annots.get(i);
+                                        const annot = annots.lookup(i);
+                                        if (annot instanceof PDFDict) {
+                                            const subtype = annot.get(PDFName.of('Subtype'))?.toString();
+                                            const isLink = subtype === '/Link';
+                                            if ((isLink && !settings.optLinks) || (!isLink && !settings.optAnnots)) {
+                                                newAnnots.push(annotRef); 
+                                            }
+                                        }
+                                    }
+                                    if (newAnnots.size() > 0) page.node.set(PDFName.of('Annots'), newAnnots);
+                                    else page.node.delete(PDFName.of('Annots'));
+                                }
+                            }
+                        }
+
+                        if (settings.optJS) page.node.delete(PDFName.of('AA'));
+                        if (settings.optUnused) {
+                            page.node.delete(PDFName.of('PieceInfo'));
+                            page.node.delete(PDFName.of('Metadata'));
+                        }
+
+                        const resDict = page.node.lookup(PDFName.of('Resources'));
+                        if (resDict && resDict instanceof PDFDict) {
+                            const xObjDict = resDict.lookup(PDFName.of('XObject'));
+                            if (xObjDict && xObjDict instanceof PDFDict) {
+                                const keys = xObjDict.keys();
+                                for (const key of keys) {
+                                    const xObj = xObjDict.lookup(key);
+                                    if (xObj && xObj.dict) {
+                                        const oc = xObj.dict.get(PDFName.of('OC'));
+                                        const width = xObj.dict.get(PDFName.of('Width'))?.numberValue;
+                                        const height = xObj.dict.get(PDFName.of('Height'))?.numberValue;
+                                        if ((settings.optHidden && oc) || width === 0 || height === 0) {
+                                            xObjDict.delete(key);
+                                        } else if (settings.optUnused) {
+                                            xObj.dict.delete(PDFName.of('Metadata'));
+                                            xObj.dict.delete(PDFName.of('PieceInfo'));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.warn("Lỗi GC Worker:", err);
+                }
+            }
+
+            async function resampleEmbeddedImages(pdfDoc, settings, onProgress, totalPages) {
+                try {
+                    const { PDFName, PDFStream, PDFRawStream, PDFNumber } = self.PDFLib;
+                    const targetDpi = settings.dpi || 120;
+                    const quality = (settings.quality || 70) / 100.0;
+                    
+                    const maxW = Math.round(8.27 * targetDpi);
+                    const maxH = Math.round(11.69 * targetDpi);
+
+                    const indirectObjects = pdfDoc.context.enumerateIndirectObjects();
+                    const imageObjects = [];
+                    for (const [ref, obj] of indirectObjects) {
+                        if (obj && obj.dict && (obj instanceof PDFStream || obj instanceof PDFRawStream)) {
+                            if (obj.dict.get(PDFName.of('Subtype'))?.toString() === '/Image') imageObjects.push({ ref, obj });
+                        }
+                    }
+
+                    const totalImages = imageObjects.length;
+                    let processedCount = 0, skippedCount = 0;
+
+                    for (const item of imageObjects) {
+                        const { ref, obj } = item;
+                        processedCount++;
+                        if (onProgress && totalImages > 0) onProgress(processedCount, totalImages, `Đang nén ảnh thông minh (${processedCount}/${totalImages})...`);
+
+                        const dict = obj.dict;
+                        const isMask = dict.get(PDFName.of('ImageMask'))?.booleanValue;
+                        const hasSMask = dict.has(PDFName.of('SMask')) || dict.has(PDFName.of('Mask'));
+                        const bpc = dict.get(PDFName.of('BitsPerComponent'))?.numberValue || 8;
+                        const width = dict.get(PDFName.of('Width'))?.numberValue || 0;
+                        const height = dict.get(PDFName.of('Height'))?.numberValue || 0;
+
+                        if (width <= 50 || height <= 50 || isMask || hasSMask || bpc < 8) {
+                            skippedCount++; continue;
+                        }
+                        
+                        try {
+                            const contents = obj.getContents();
+                            if (!contents || contents.length < 50) continue;
+
+                            const mime = 'image/png';
+                            const blob = new Blob([contents], { type: mime });
+                            let bitmap;
+                            try {
+                                bitmap = await createImageBitmap(blob);
+                            } catch (e1) { continue; }
+
+                            if (!bitmap) continue;
+
+                            const origW = bitmap.width || width;
+                            const origH = bitmap.height || height;
+                            let targetW = origW, targetH = origH;
+
+                            if (origW > maxW || origH > maxH) {
+                                const scale = Math.min(maxW / origW, maxH / origH);
+                                targetW = Math.round(origW * scale);
+                                targetH = Math.round(origH * scale);
+                            }
+
+                            if (typeof OffscreenCanvas !== 'undefined') {
+                                const canvas = new OffscreenCanvas(targetW, targetH);
+                                const ctx = canvas.getContext('2d');
+                                ctx.fillStyle = '#FFFFFF';
+                                ctx.fillRect(0, 0, targetW, targetH);
+                                ctx.imageSmoothingEnabled = true;
+                                ctx.imageSmoothingQuality = 'high';
+                                ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+
+                                const outBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: quality });
+                                const arrayBuffer = await outBlob.arrayBuffer();
+                                const jpgBytes = new Uint8Array(arrayBuffer);
+                                bitmap.close();
+
+                                if (jpgBytes.length < contents.length || origW > maxW) {
+                                    obj.contents = jpgBytes;
+                                    dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
+                                    dict.set(PDFName.of('Width'), PDFNumber.of(targetW));
+                                    dict.set(PDFName.of('Height'), PDFNumber.of(targetH));
+                                    dict.set(PDFName.of('ColorSpace'), PDFName.of('DeviceRGB'));
+                                    dict.set(PDFName.of('BitsPerComponent'), PDFNumber.of(8));
+                                    dict.delete(PDFName.of('DecodeParms'));
+                                }
+                            } else {
+                                bitmap.close();
+                            }
+                        } catch (errOne) {
+                            console.warn("Lỗi nén ảnh worker:", errOne);
+                        }
+                    }
+                } catch (errAll) {
+                    console.warn("Lỗi resampleEmbeddedImages:", errAll);
+                }
+            }
+
+            async function processPdfVectorScaling(arrayBuffer, settings, onProgress) {
+                const { PDFDocument, PDFName, PDFArray, PDFDict, PDFNumber } = self.PDFLib;
+                const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+
+                await deepCleanMetadataAndResources(pdfDoc, settings, onProgress);
+
+                const pages = pdfDoc.getPages();
+                const totalPages = pages.length;
+
+                if (settings.preset === 'balanced') {
+                    await resampleEmbeddedImages(pdfDoc, settings, onProgress, totalPages);
+                }
+
+                // THUẬT TOÁN TIGHT BOUNDING BOX (KHÔNG CÒN LỀ TRẮNG)
+                for (let idx = 0; idx < totalPages; idx++) {
+                    if (onProgress) onProgress(idx + 1, totalPages, `Đang Scale tự động ôm sát viền trang ${idx + 1} / ${totalPages}...`);
+                    const page = pages[idx];
+                    const { width, height } = page.getSize();
+
+                    if (settings.targetSize && settings.targetSize !== 'NONE') {
+                        const targetMM = calculateTargetSizeMM(width, height, settings.targetSize);
+                        if (targetMM) {
+                            const targetWidthPt = targetMM.width * 2.83465;
+                            const targetHeightPt = targetMM.height * 2.83465;
+                            
+                            const scale = Math.min(targetWidthPt / width, targetHeightPt / height);
+                            const tightWidth = width * scale;
+                            const tightHeight = height * scale;
+
+                            page.setSize(tightWidth, tightHeight);
+                            page.scaleContent(scale, scale);
+
+                            const annots = page.node.lookup(PDFName.of('Annots'));
+                            if (annots instanceof PDFArray) {
+                                for (let i = 0; i < annots.size(); i++) {
+                                    const annot = annots.lookup(i);
+                                    if (annot instanceof PDFDict) {
+                                        const rect = annot.lookup(PDFName.of('Rect'));
+                                        if (rect instanceof PDFArray && rect.size() === 4) {
+                                            const x1 = rect.get(0).numberValue;
+                                            const y1 = rect.get(1).numberValue;
+                                            const x2 = rect.get(2).numberValue;
+                                            const y2 = rect.get(3).numberValue;
+                                            
+                                            rect.set(0, PDFNumber.of(x1 * scale));
+                                            rect.set(1, PDFNumber.of(y1 * scale));
+                                            rect.set(2, PDFNumber.of(x2 * scale));
+                                            rect.set(3, PDFNumber.of(y2 * scale));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return await pdfDoc.save({ useObjectStreams: true, addMissingComponents: false });
+            }
+
+            self.onmessage = async function(e) {
+                const { id, action, arrayBuffer, settings } = e.data;
+                if (action === 'processVector') {
+                    try {
+                        const onProgress = (current, total, text) => {
+                            self.postMessage({ id, type: 'progress', progress: { current, total, text } });
+                        };
+                        const resultBuffer = await processPdfVectorScaling(arrayBuffer, settings, onProgress);
+                        self.postMessage({ id, type: 'done', resultBuffer }, [resultBuffer.buffer || resultBuffer]);
+                    } catch (err) {
+                        self.postMessage({ id, type: 'error', error: err.message });
+                    }
+                }
+            };
+        }.toString()})()`], { type: 'application/javascript' });
+
+        const pdfWorkerUrl = URL.createObjectURL(pdfWorkerBlob);
+        let sharedWorkerInstance = null;
+
+        function getPdfWorker() {
+            if (!sharedWorkerInstance) {
+                sharedWorkerInstance = new Worker(pdfWorkerUrl);
+            }
+            return sharedWorkerInstance;
+        }
+
+        async function processPdfRasterization(arrayBuffer, settings, onProgress) {
+            const { PDFDocument } = PDFLib;
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer.slice(0) });
+            const pdf = await loadingTask.promise;
+            const totalPages = pdf.numPages;
+
+            const newPdfDoc = await PDFDocument.create();
+            const targetDpi = settings.dpi || 96;
+            const scale = targetDpi / 72.0;
+            const quality = (settings.quality || 60) / 100.0;
+
+            for (let i = 1; i <= totalPages; i++) {
+                if (onProgress) await onProgress(i, totalPages, `Đang chuyển trang ${i}/${totalPages} sang JPEG (${targetDpi} DPI)...`);
+                
+                const page = await pdf.getPage(i);
+                const viewport = page.getViewport({ scale });
+
+                let canvas, ctx;
+                const useOffscreen = typeof OffscreenCanvas !== 'undefined';
+                
+                if (useOffscreen) {
+                    canvas = new OffscreenCanvas(Math.floor(viewport.width), Math.floor(viewport.height));
+                    ctx = canvas.getContext('2d');
+                } else {
+                    canvas = document.createElement('canvas');
+                    canvas.width = Math.floor(viewport.width);
+                    canvas.height = Math.floor(viewport.height);
+                    ctx = canvas.getContext('2d');
+                }
+
+                await page.render({ canvasContext: ctx, viewport }).promise;
+
+                let imgBytes;
+                if (useOffscreen && canvas.convertToBlob) {
+                    const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: quality });
+                    const arrayBuf = await blob.arrayBuffer();
+                    imgBytes = new Uint8Array(arrayBuf);
+                } else {
+                    const imgDataUrl = canvas.toDataURL('image/jpeg', quality);
+                    const arrayBuf = await fetch(imgDataUrl).then(res => res.arrayBuffer());
+                    imgBytes = new Uint8Array(arrayBuf);
+                    canvas.width = 0; canvas.height = 0;
+                }
+
+                const embeddedImg = await newPdfDoc.embedJpg(imgBytes);
+                page.cleanup();
+
+                let origW = viewport.width / scale;
+                let origH = viewport.height / scale;
+                let finalW = origW;
+                let finalH = origH;
+                let scaleToFit = 1.0;
+                let tx = 0;
+                let ty = 0;
+
+                if (settings.targetSize && settings.targetSize !== 'NONE') {
+                    const targetMM = calculateTargetSizeMM(origW, origH, settings.targetSize);
+                    if (targetMM) {
+                        finalW = targetMM.width * 2.83465;
+                        finalH = targetMM.height * 2.83465;
+                        scaleToFit = Math.min(finalW / origW, finalH / origH);
+                        tx = (finalW - (origW * scaleToFit)) / 2;
+                        ty = (finalH - (origH * scaleToFit)) / 2;
+                    }
+                }
+
+                const newPage = newPdfDoc.addPage([finalW, finalH]);
+                newPage.drawImage(embeddedImg, { 
+                    x: tx, 
+                    y: ty, 
+                    width: origW * scaleToFit, 
+                    height: origH * scaleToFit 
+                });
+                
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+
+            pdf.destroy();
+            return await newPdfDoc.save({ useObjectStreams: true });
+        }
+
+        async function processSingleFile(index) {
+            const item = filesQueue[index];
             if (!item) return;
 
             item.status = 'processing';
-            item.statusText = 'Đang xử lý...';
-            renderQueue();
+            item.progressPct = 0;
+            item.progressText = 'Đang khởi tạo...';
+            updateQueueUI();
+
+            const onProgress = async (current, total, text) => {
+                await updateItemProgress(item.id, current, total, text);
+            };
 
             try {
-                await executeOptimizeFile(item);
-            } catch (err) {
-                console.error("Lỗi khi nén file:", err);
-                item.status = 'error';
-                item.statusText = 'Lỗi xử lý file!';
-            }
+                const arrayBuffer = await item.file.arrayBuffer();
+                let resultBuffer;
 
-            renderQueue();
-            updateGlobalResultsSummary();
+                if (item.settings.preset === 'super') {
+                    resultBuffer = await processPdfRasterization(arrayBuffer, item.settings, onProgress);
+                } else {
+                    resultBuffer = await new Promise((resolve, reject) => {
+                        const worker = getPdfWorker();
+                        const handleMessage = (e) => {
+                            const { id, type, progress, resultBuffer: resBuf, error } = e.data;
+                            if (id !== item.id) return;
+                            
+                            if (type === 'progress') {
+                                updateItemProgress(id, progress.current, progress.total, progress.text);
+                            } else if (type === 'done') {
+                                worker.removeEventListener('message', handleMessage);
+                                resolve(resBuf);
+                            } else if (type === 'error') {
+                                worker.removeEventListener('message', handleMessage);
+                                reject(new Error(error));
+                            }
+                        };
+                        worker.addEventListener('message', handleMessage);
+                        worker.postMessage({
+                            id: item.id,
+                            action: 'processVector',
+                            arrayBuffer: arrayBuffer,
+                            settings: item.settings
+                        }, [arrayBuffer]);
+                    });
+                }
+
+                item.optArrayBuffer = resultBuffer;
+                item.optSize = resultBuffer.byteLength;
+                item.status = 'done';
+                item.progressPct = 100;
+                showToast(`Đã tối ưu thành công file: ${item.name}`, 'success');
+            } catch (err) {
+                console.error("Error processing file:", err);
+                item.status = 'error';
+                showToast(`Lỗi khi xử lý file ${item.name}: ${err.message}`, 'error');
+            }
+            updateQueueUI();
         }
 
         async function processAllFiles() {
-            const btn = document.getElementById('start-process-btn');
-            btn.disabled = true;
-            btn.classList.add('opacity-50', 'cursor-not-allowed');
-
-            for (let item of filesQueue) {
-                // Re-run for ALL files in queue (including already completed ones)
-                item.status = 'processing';
-                item.statusText = 'Đang xử lý...';
-                renderQueue();
-
-                try {
-                    await executeOptimizeFile(item);
-                } catch (err) {
-                    console.error("Lỗi khi nén file:", err);
-                    item.status = 'error';
-                    item.statusText = 'Lỗi xử lý!';
-                }
-
-                renderQueue();
-            }
-
-            btn.disabled = false;
-            btn.classList.remove('opacity-50', 'cursor-not-allowed');
-            updateGlobalResultsSummary();
-        }
-
-        async function executeOptimizeFile(itemObj) {
-            const arrayBuffer = await itemObj.file.arrayBuffer();
-            let outputPdfBytes;
-
-            if (itemObj.settings.preset === 'super') {
-                // Full Rasterization to JPEG
-                outputPdfBytes = await processPdfWithRasterization(arrayBuffer, itemObj);
-            } else if (itemObj.settings.preset === 'hybrid') {
-                // Optimized Hybrid mode with background image downsampling
-                outputPdfBytes = await processPdfHybridMode(arrayBuffer, itemObj);
-            } else {
-                // Pure Vector page scaling + Nitro cleans
-                outputPdfBytes = await processPdfVectorScaling(arrayBuffer, itemObj);
-            }
-
-            // Safety check: If output is bigger than input due to uncompressable streams, fallback to high-efficiency rasterization
-            if (outputPdfBytes.byteLength >= itemObj.file.size && itemObj.settings.preset !== 'super') {
-                console.warn("Kích thước file bị tăng lên, tiến hành nén tối ưu lại bằng Rasterize...");
-                outputPdfBytes = await processPdfWithRasterization(arrayBuffer, itemObj);
-            }
-
-            const outputBlob = new Blob([outputPdfBytes], { type: 'application/pdf' });
-            itemObj.processedBlob = outputBlob;
-            itemObj.status = 'completed';
-            itemObj.statusText = 'Hoàn thành';
-            itemObj.processedSizeFormatted = formatBytes(outputBlob.size);
-            
-            const savedPercent = Math.max(0, Math.round((1 - (outputBlob.size / itemObj.file.size)) * 100));
-            itemObj.savings = savedPercent;
-
-            try {
-                const optPdfDoc = await pdfjsLib.getDocument({ data: await outputBlob.arrayBuffer() }).promise;
-                const page1 = await optPdfDoc.getPage(1);
-                const vp = page1.getViewport({ scale: 1.0 });
-                itemObj.optWidthMm = Math.round(vp.width * PT_TO_MM);
-                itemObj.optHeightMm = Math.round(vp.height * PT_TO_MM);
-            } catch (e) {
-                console.error("Không đo được kích thước file đầu ra:", e);
-            }
-        }
-
-        // 1. Full Rasterization Mode
-        async function processPdfWithRasterization(arrayBuffer, itemObj) {
-            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer.slice(0) });
-            const pdfDoc = await loadingTask.promise;
-            const numPages = pdfDoc.numPages;
-
-            const newPdfDoc = await PDFLib.PDFDocument.create();
-            const scaleFactor = itemObj.settings.dpi / 72;
-
-            for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-                itemObj.progress = Math.round((pageNum / numPages) * 100);
-                itemObj.statusText = `Nén & rasterize trang ${pageNum}/${numPages}...`;
-                updateItemProgress(itemObj);
-
-                const page = await pdfDoc.getPage(pageNum);
-                const viewport = page.getViewport({ scale: scaleFactor });
-
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
-
-                ctx.fillStyle = '#FFFFFF';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-
-                const imgDataUrl = canvas.toDataURL('image/jpeg', itemObj.settings.quality);
-                const jpgImageBytes = await fetch(imgDataUrl).then(res => res.arrayBuffer());
-                const embeddedJpg = await newPdfDoc.embedJpg(jpgImageBytes);
-
-                const { targetWidth, targetHeight } = calculateTargetDimensions(viewport.width / scaleFactor, viewport.height / scaleFactor, itemObj.settings.resizeMode);
-
-                const newPage = newPdfDoc.addPage([targetWidth, targetHeight]);
-                newPage.drawImage(embeddedJpg, {
-                    x: 0,
-                    y: 0,
-                    width: targetWidth,
-                    height: targetHeight
-                });
-            }
-
-            applyNitroPdfCleanups(newPdfDoc, itemObj.settings.nitro || getNitroOptionsFromUI());
-            return await newPdfDoc.save({ useObjectStreams: true });
-        }
-
-        // Helper to map Vietnamese & non-WinAnsi text safely for PDF-lib Standard Fonts
-        function sanitizeTextForPdfLib(text) {
-            if (!text) return '';
-            const vietMap = {
-                'à':'a','á':'a','ả':'a','ã':'a','ạ':'a','ă':'a','ằ':'a','ắ':'a','ẳ':'a','ẵ':'a','ặ':'a','â':'a','ầ':'a','ấ':'a','ẩ':'a','ẫ':'a','ậ':'a',
-                'è':'e','é':'e','ẻ':'e','ẽ':'e','ẹ':'e','ê':'e','ề':'e','ế':'e','ể':'e','ễ':'e','ệ':'e',
-                'ì':'i','í':'i','ỉ':'i','ĩ':'i','ị':'i',
-                'ò':'o','ó':'o','ỏ':'o','õ':'o','ọ':'o','ô':'o','ồ':'o','ố':'o','ổ':'o','ỗ':'o','ộ':'o','ơ':'o','ờ':'o','ớ':'o','ở':'o','ỡ':'o','ợ':'o',
-                'ù':'u','ú':'u','ủ':'u','ũ':'u','ụ':'u','ư':'u','ừ':'u','ứ':'u','ử':'u','ữ':'u','ự':'u',
-                'ỳ':'y','ý':'y','ỷ':'y','ỹ':'y','ỵ':'y',
-                'đ':'d','Đ':'D',
-                'À':'A','Á':'A','Ả':'A','Ã':'A','Ạ':'A','Ă':'A','Ằ':'A','Ắ':'A','Ẳ':'A','Ẵ':'A','Ặ':'A','Â':'A','Ầ':'A','Ấ':'A','Ẩ':'A','Ẫ':'A','Ậ':'A',
-                'È':'E','É':'E','Ẻ':'E','Ẽ':'E','Ẹ':'E','Ê':'E','Ề':'E','Ế':'E','Ể':'E','Ễ':'E','Ệ':'E',
-                'Ì':'I','Í':'I','Ỉ':'I','Ĩ':'I','Ị':'I',
-                'Ò':'O','Ó':'O','Ỏ':'O','Õ':'O','Ọ':'O','Ô':'O','Ồ':'O','Ố':'O','Ổ':'O','Ỗ':'O','Ộ':'O','Ơ':'O','Ờ':'O','Ớ':'O','Ở':'O','Ỡ':'O','Ợ':'O',
-                'Ù':'U','Ú':'U','Ủ':'U','Ũ':'U','Ụ':'U','Ư':'U','Ừ':'U','Ứ':'U','Ử':'U','Ữ':'U','Ự':'U',
-                'Ỳ':'Y','Ý':'Y','Ỷ':'Y','Ỹ':'Y','Ỵ':'Y'
-            };
-            let res = '';
-            for (let i = 0; i < text.length; i++) {
-                const ch = text[i];
-                res += vietMap[ch] || ch;
-            }
-            return res.replace(/[^\x20-\x7E]/g, '?');
-        }
-
-        // 2. Hybrid Mode: Flatten all background vectors & artwork into 1 image + Keep text layer selectable
-        async function processPdfHybridMode(arrayBuffer, itemObj) {
-            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer.slice(0) });
-            const pdfDoc = await loadingTask.promise;
-            const numPages = pdfDoc.numPages;
-
-            const newPdfDoc = await PDFLib.PDFDocument.create();
-            const fontHelvetica = await newPdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
-            const scaleFactor = itemObj.settings.dpi / 72;
-
-            for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-                itemObj.progress = Math.round((pageNum / numPages) * 100);
-                itemObj.statusText = `Nén phẳng nền & quét chữ trang ${pageNum}/${numPages}...`;
-                updateItemProgress(itemObj);
-
-                const page = await pdfDoc.getPage(pageNum);
-                const viewport = page.getViewport({ scale: scaleFactor });
-
-                // 1. Render and flatten all background vector paths, overlapping graphics & layers into 1 JPEG image
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
-
-                ctx.fillStyle = '#FFFFFF';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                await page.render({ canvasContext: ctx, viewport: viewport }).promise;
-
-                const imgDataUrl = canvas.toDataURL('image/jpeg', itemObj.settings.quality);
-                const jpgImageBytes = await fetch(imgDataUrl).then(res => res.arrayBuffer());
-                const embeddedJpg = await newPdfDoc.embedJpg(jpgImageBytes);
-
-                const unscaledViewport = page.getViewport({ scale: 1.0 });
-                const { targetWidth, targetHeight, scaleRatio } = calculateTargetDimensions(
-                    unscaledViewport.width, 
-                    unscaledViewport.height, 
-                    itemObj.settings.resizeMode
-                );
-
-                const newPage = newPdfDoc.addPage([targetWidth, targetHeight]);
-                
-                // Draw single flattened background graphic
-                newPage.drawImage(embeddedJpg, {
-                    x: 0,
-                    y: 0,
-                    width: targetWidth,
-                    height: targetHeight
-                });
-
-                // 2. Extract text positions and draw invisible selectable text layer on top
-                try {
-                    const textContent = await page.getTextContent();
-                    for (const item of textContent.items) {
-                        if (!item.str || item.str.trim().length === 0) continue;
-
-                        const tx = item.transform; // [a, b, c, d, e, f]
-                        const origX = tx[4] * scaleRatio;
-                        const origY = tx[5] * scaleRatio;
-                        
-                        const fontSize = Math.hypot(tx[0], tx[1]) * scaleRatio;
-                        if (fontSize <= 0) continue;
-
-                        const rad = Math.atan2(tx[1], tx[0]);
-                        const deg = rad * (180 / Math.PI);
-
-                        const safeStr = sanitizeTextForPdfLib(item.str);
-
-                        try {
-                            newPage.drawText(safeStr, {
-                                x: origX,
-                                y: origY,
-                                size: Math.max(4, fontSize),
-                                font: fontHelvetica,
-                                opacity: 0, // Invisible overlay for searchable and selectable text
-                                rotate: PDFLib.degrees(deg)
-                            });
-                        } catch (e) {
-                            // Ignore character rendering errors for edge cases
-                        }
-                    }
-                } catch (e) {
-                    console.warn("Không trích xuất được lớp chữ cho trang " + pageNum, e);
+            for (let i = 0; i < filesQueue.length; i++) {
+                if (filesQueue[i].status !== 'done') {
+                    await processSingleFile(i);
                 }
             }
-
-            applyNitroPdfCleanups(newPdfDoc, itemObj.settings.nitro || getNitroOptionsFromUI());
-            return await newPdfDoc.save({ useObjectStreams: true });
         }
 
-        // 3. Pure Vector Scaling
-        async function processPdfVectorScaling(arrayBuffer, itemObj) {
-            const srcPdf = await PDFLib.PDFDocument.load(arrayBuffer.slice(0), { ignoreEncryption: true });
-            const newPdf = await PDFLib.PDFDocument.create();
-            
-            const nitroOpts = itemObj.settings.nitro || getNitroOptionsFromUI();
-            applyNitroPdfCleanups(srcPdf, nitroOpts);
-            const pages = srcPdf.getPages();
+        // =========================================================================
+        // MODULE: GỘP FILE (COMBINE FILES UI & LOGIC)
+        // =========================================================================
 
-            for (let i = 0; i < pages.length; i++) {
-                itemObj.progress = Math.round(((i + 1) / pages.length) * 100);
-                itemObj.statusText = `Resize vector trang ${i+1}/${pages.length}...`;
-                updateItemProgress(itemObj);
-
-                const [copiedPage] = await newPdf.copyPages(srcPdf, [i]);
-                const { width, height } = copiedPage.getSize();
-                const { scaleRatio } = calculateTargetDimensions(width, height, itemObj.settings.resizeMode);
-
-                if (scaleRatio !== 1.0) {
-                    copiedPage.scale(scaleRatio, scaleRatio);
-                }
-
-                newPdf.addPage(copiedPage);
+        function openMergeModal() {
+            if (filesQueue.length === 0) {
+                showToast('Chưa có file nào để gộp. Vui lòng thêm file trước!', 'error');
+                return;
             }
-
-            applyNitroPdfCleanups(newPdf, nitroOpts);
-            return await newPdf.save({ useObjectStreams: true });
+            document.getElementById('merge-modal').classList.remove('hidden');
+            document.getElementById('merge-modal').classList.add('flex');
+            selectedMergeIndex = null;
+            renderMergeGrid();
         }
 
-        // Helper to calculate target dimensions keeping aspect ratio
-        function calculateTargetDimensions(origWidthPt, origHeightPt, mode) {
-            const origLongEdge = Math.max(origWidthPt, origHeightPt);
-            let scaleRatio = 1.0;
+        function closeMergeModal() {
+            document.getElementById('merge-modal').classList.add('hidden');
+            document.getElementById('merge-modal').classList.remove('flex');
+            selectedMergeIndex = null;
+        }
 
-            if (TARGET_LONG_EDGES[mode]) {
-                const targetLongEdge = TARGET_LONG_EDGES[mode];
-                scaleRatio = targetLongEdge / origLongEdge;
-            } else if (mode === 'half') {
-                scaleRatio = 0.5;
-            } else if (mode === 'scale75') {
-                scaleRatio = 0.75;
+        function selectMergeCard(index) {
+            selectedMergeIndex = index;
+            renderMergeGrid(); // Re-render to show selection styling
+        }
+
+        function moveMergeSelected(direction) {
+            if (selectedMergeIndex === null) return;
+            const newIndex = selectedMergeIndex + direction;
+            if (newIndex >= 0 && newIndex < filesQueue.length) {
+                const temp = filesQueue[newIndex];
+                filesQueue[newIndex] = filesQueue[selectedMergeIndex];
+                filesQueue[selectedMergeIndex] = temp;
+                selectedMergeIndex = newIndex; // update selection tracker
+                updateQueueUI(); // update main UI behind modal
+                renderMergeGrid(); // update modal UI
             }
-
-            return {
-                targetWidth: origWidthPt * scaleRatio,
-                targetHeight: origHeightPt * scaleRatio,
-                scaleRatio: scaleRatio
-            };
         }
 
-        function updateItemProgress(itemObj) {
-            const statusEl = document.getElementById(`status-text-${itemObj.id}`);
-            const barEl = document.getElementById(`bar-${itemObj.id}`);
-            if (statusEl) statusEl.innerText = itemObj.statusText;
-            if (barEl) barEl.style.width = itemObj.progress + '%';
+        function removeMergeSelected() {
+            if (selectedMergeIndex === null) return;
+            filesQueue.splice(selectedMergeIndex, 1);
+            selectedMergeIndex = null;
+            updateQueueUI();
+            renderMergeGrid();
         }
 
-        function updateGlobalResultsSummary() {
-            const container = document.getElementById('results-container');
-            const completed = filesQueue.filter(f => f.status === 'completed');
-            
-            if (completed.length === 0) {
-                container.classList.add('hidden');
+        function renderMergeGrid() {
+            const grid = document.getElementById('merge-grid');
+            const emptyState = document.getElementById('merge-empty-state');
+            const totalFilesSpan = document.getElementById('merge-total-files');
+            const totalPagesSpan = document.getElementById('merge-total-pages');
+            const btnExecute = document.getElementById('btn-execute-merge');
+
+            if (filesQueue.length === 0) {
+                grid.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
+                totalFilesSpan.textContent = '0';
+                totalPagesSpan.textContent = '0';
+                btnExecute.disabled = true;
+                btnExecute.classList.add('opacity-50', 'cursor-not-allowed');
                 return;
             }
 
-            container.classList.remove('hidden');
-            let totalOrig = completed.reduce((acc, f) => acc + f.file.size, 0);
-            let totalOpt = completed.reduce((acc, f) => acc + f.processedBlob.size, 0);
-            let totalSaved = Math.max(0, Math.round((1 - (totalOpt / totalOrig)) * 100));
+            emptyState.classList.add('hidden');
+            emptyState.classList.remove('flex');
+            btnExecute.disabled = false;
+            btnExecute.classList.remove('opacity-50', 'cursor-not-allowed');
 
-            document.getElementById('savings-summary-text').innerText = 
-                `Đã nén ${completed.length} file: ${formatBytes(totalOrig)} ➔ ${formatBytes(totalOpt)} (Tiết kiệm ${totalSaved}% dung lượng!)`;
+            totalFilesSpan.textContent = filesQueue.length;
+            const totalPages = filesQueue.reduce((sum, f) => sum + (f.pageCount || 0), 0);
+            totalPagesSpan.textContent = totalPages;
+
+            grid.innerHTML = filesQueue.map((file, index) => {
+                const isSelected = index === selectedMergeIndex;
+                const isOptimized = file.status === 'done';
+                return `
+                    <div onclick="selectMergeCard(${index})" class="merge-card relative flex flex-col items-center bg-white border-2 ${isSelected ? 'selected border-blue-500' : 'border-slate-200'} rounded-xl w-[120px] cursor-pointer hover:border-blue-300 transition-all shadow-sm overflow-hidden group">
+                        
+                        <!-- Top Badge: Pages -->
+                        <div class="absolute top-0 left-0 right-0 bg-slate-900/80 text-center py-0.5 z-10 text-[10px] text-amber-400 font-bold tracking-wide">
+                            ${file.pageCount} pages
+                        </div>
+                        
+                        <!-- Icon/Thumbnail Placeholder -->
+                        <div class="w-full h-[140px] bg-slate-100 flex items-center justify-center relative">
+                            <i class="fa-solid fa-file-pdf text-5xl ${isOptimized ? 'text-green-500' : 'text-slate-300'}"></i>
+                            ${isOptimized ? `<div class="absolute bottom-2 right-2 bg-green-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] shadow-sm"><i class="fa-solid fa-check"></i></div>` : ''}
+                        </div>
+                        
+                        <!-- File Name -->
+                        <div class="w-full p-2 bg-white border-t border-slate-100 text-center">
+                            <p class="text-[10px] text-slate-700 font-semibold truncate w-full" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</p>
+                        </div>
+                        
+                        <!-- Hover Overlay -->
+                        <div class="absolute inset-0 bg-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+                    </div>
+                `;
+            }).join('');
         }
 
-        function downloadSingleFile(id) {
-            const item = filesQueue.find(f => f.id === id);
-            if (!item || !item.processedBlob) return;
+        async function executeMerge() {
+            if (filesQueue.length < 2) {
+                showToast('Bạn cần ít nhất 2 file để thực hiện gộp!', 'error');
+                return;
+            }
 
-            const url = URL.createObjectURL(item.processedBlob);
+            const btn = document.getElementById('btn-execute-merge');
+            const originalBtnHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Đang gộp file...`;
+            showToast('Đang tiến hành gộp tất cả file... Vui lòng không đóng trang!', 'info');
+            
+            try {
+                const { PDFDocument } = window.PDFLib || self.PDFLib;
+                const mergedPdf = await PDFDocument.create();
+
+                for (let i = 0; i < filesQueue.length; i++) {
+                    const item = filesQueue[i];
+                    const buffer = item.optArrayBuffer ? item.optArrayBuffer : await item.file.arrayBuffer();
+                    const pdf = await PDFDocument.load(buffer, { ignoreEncryption: true });
+                    const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                    
+                    copiedPages.forEach(page => mergedPdf.addPage(page));
+                }
+
+                const mergedPdfBytes = await mergedPdf.save({ useObjectStreams: true });
+                
+                const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'Merged_Optimizer_Studio.pdf';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showToast('Đã gộp và tải xuống thành công!', 'success');
+                closeMergeModal();
+            } catch (error) {
+                console.error("Lỗi khi gộp file:", error);
+                showToast('Có lỗi xảy ra khi gộp file: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalBtnHtml;
+            }
+        }
+
+        // =========================================================================
+        // PREVIEW & COMPARE MODAL LOGIC
+        // =========================================================================
+
+        async function openPreviewModal(index) {
+            const item = filesQueue[index];
+            if (!item || !item.optArrayBuffer) return;
+
+            activePreviewIndex = index;
+            previewCurrentPage = 1;
+            previewTotalPages = item.pageCount;
+            previewZoom = 1.0;
+
+            document.getElementById('preview-filename').textContent = item.name;
+            document.getElementById('preview-modal').classList.remove('hidden');
+
+            await renderPreviewPage();
+            initComparisonSlider();
+        }
+
+        function closePreviewModal() {
+            document.getElementById('preview-modal').classList.add('hidden');
+            activePreviewIndex = null;
+        }
+
+        function setPreviewMode(mode) {
+            previewMode = mode;
+            document.getElementById('btn-mode-side').className = mode === 'side' ? 'px-3 py-1.5 rounded-lg font-semibold bg-blue-600 text-white transition-all' : 'px-3 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-white transition-all';
+            document.getElementById('btn-mode-slider').className = mode === 'slider' ? 'px-3 py-1.5 rounded-lg font-semibold bg-blue-600 text-white transition-all' : 'px-3 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-white transition-all';
+
+            if (mode === 'side') {
+                document.getElementById('view-side-container').classList.remove('hidden');
+                document.getElementById('view-side-container').classList.add('flex');
+                document.getElementById('view-slider-container').classList.add('hidden');
+                document.getElementById('view-slider-container').classList.remove('flex');
+            } else {
+                document.getElementById('view-side-container').classList.add('hidden');
+                document.getElementById('view-side-container').classList.remove('flex');
+                document.getElementById('view-slider-container').classList.remove('hidden');
+                document.getElementById('view-slider-container').classList.add('flex');
+                updateSliderClip(50);
+            }
+        }
+
+        async function changePreviewPage(delta) {
+            const newPage = previewCurrentPage + delta;
+            if (newPage >= 1 && newPage <= previewTotalPages) {
+                previewCurrentPage = newPage;
+                await renderPreviewPage();
+            }
+        }
+
+        function zoomPreview(delta) {
+            previewZoom = Math.min(Math.max(0.5, previewZoom + delta), 3.0);
+            document.getElementById('zoom-indicator').textContent = `${Math.round(previewZoom * 100)}%`;
+            document.getElementById('preview-dimensions-tag').textContent = `Scale: ${Math.round(previewZoom * 100)}%`;
+            applyPreviewZoom();
+        }
+
+        function resetPreviewZoom() {
+            previewZoom = 1.0;
+            document.getElementById('zoom-indicator').textContent = '100%';
+            document.getElementById('preview-dimensions-tag').textContent = 'Scale: 100%';
+            applyPreviewZoom();
+        }
+
+        function applyPreviewZoom() {
+            const sideContainer = document.getElementById('view-side-container');
+            const sliderBox = document.getElementById('slider-box');
+
+            if (sideContainer) sideContainer.style.transform = `scale(${previewZoom})`;
+            if (sliderBox) sliderBox.style.transform = `scale(${previewZoom})`;
+        }
+
+        async function renderPreviewPage() {
+            if (activePreviewIndex === null) return;
+            const item = filesQueue[activePreviewIndex];
+
+            document.getElementById('preview-page-indicator').textContent = `Trang ${previewCurrentPage} / ${previewTotalPages}`;
+
+            // Load Original PDF page
+            const origBuffer = await item.file.arrayBuffer();
+            const pdfOrig = await pdfjsLib.getDocument({ data: origBuffer }).promise;
+            const pageOrig = await pdfOrig.getPage(previewCurrentPage);
+            const vpOrig = pageOrig.getViewport({ scale: 1.5 });
+
+            // Load Optimized PDF page
+            const pdfOpt = await pdfjsLib.getDocument({ data: item.optArrayBuffer.slice(0) }).promise;
+            const pageOpt = await pdfOpt.getPage(previewCurrentPage);
+            const vpOpt = pageOpt.getViewport({ scale: 1.5 });
+
+            // Update Dimensions Info header
+            const origWMM = Math.round(vpOrig.width * (0.352778 / 1.5));
+            const origHMM = Math.round(vpOrig.height * (0.352778 / 1.5));
+            const optWMM = Math.round(vpOpt.width * (0.352778 / 1.5));
+            const optHMM = Math.round(vpOpt.height * (0.352778 / 1.5));
+
+            document.getElementById('preview-info-orig').innerHTML = `<i class="fa-solid fa-file text-slate-500 mr-1"></i> Gốc: <strong>${origWMM} × ${origHMM} mm</strong>`;
+            document.getElementById('preview-info-opt').innerHTML = `<i class="fa-solid fa-compress text-green-500 mr-1"></i> Tối ưu: <strong>${optWMM} × ${optHMM} mm</strong>`;
+
+            // Render Side-By-Side Canvases
+            const canvasOrigSide = document.getElementById('canvas-orig-side');
+            canvasOrigSide.width = vpOrig.width;
+            canvasOrigSide.height = vpOrig.height;
+            await pageOrig.render({ canvasContext: canvasOrigSide.getContext('2d'), viewport: vpOrig }).promise;
+
+            const canvasOptSide = document.getElementById('canvas-opt-side');
+            canvasOptSide.width = vpOpt.width;
+            canvasOptSide.height = vpOpt.height;
+            await pageOpt.render({ canvasContext: canvasOptSide.getContext('2d'), viewport: vpOpt }).promise;
+
+            // Render Overlay Slider Canvases
+            const canvasOrigSlider = document.getElementById('canvas-orig-slider');
+            canvasOrigSlider.width = vpOrig.width;
+            canvasOrigSlider.height = vpOrig.height;
+            await pageOrig.render({ canvasContext: canvasOrigSlider.getContext('2d'), viewport: vpOrig }).promise;
+
+            const canvasOptSlider = document.getElementById('canvas-opt-slider');
+            canvasOptSlider.width = vpOrig.width;
+            canvasOptSlider.height = vpOrig.height;
+            
+            const matchedVpOpt = pageOpt.getViewport({ scale: vpOrig.width / (pageOpt.getViewport({ scale: 1.0 }).width) });
+            await pageOpt.render({ canvasContext: canvasOptSlider.getContext('2d'), viewport: matchedVpOpt }).promise;
+
+            updateSliderClip(50);
+
+            // RAM Cleanup
+            pageOrig.cleanup();
+            pageOpt.cleanup();
+            pdfOrig.destroy();
+            pdfOpt.destroy();
+        }
+
+        function initComparisonSlider() {
+            const sliderBox = document.getElementById('slider-box');
+            let isDragging = false;
+
+            const onMove = (clientX) => {
+                if (!isDragging) return;
+                const rect = sliderBox.getBoundingClientRect();
+                let x = clientX - rect.left;
+                x = Math.max(0, Math.min(x, rect.width));
+                const percentage = (x / rect.width) * 100;
+                updateSliderClip(percentage);
+            };
+
+            sliderBox.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                onMove(e.clientX);
+            });
+
+            window.addEventListener('mousemove', (e) => onMove(e.clientX));
+            window.addEventListener('mouseup', () => { isDragging = false; });
+
+            sliderBox.addEventListener('touchstart', (e) => {
+                isDragging = true;
+                if (e.touches[0]) onMove(e.touches[0].clientX);
+            });
+
+            window.addEventListener('touchmove', (e) => {
+                if (e.touches[0]) onMove(e.touches[0].clientX);
+            });
+
+            window.addEventListener('touchend', () => { isDragging = false; });
+        }
+
+        function updateSliderClip(percentage) {
+            const handle = document.getElementById('slider-handle');
+            const optCanvas = document.getElementById('canvas-opt-slider');
+
+            if (handle) handle.style.left = `${percentage}%`;
+            if (optCanvas) {
+                optCanvas.style.clipPath = `inset(0 0 0 ${percentage}%)`;
+            }
+        }
+
+        function downloadSingleFile(index) {
+            const item = filesQueue[index];
+            if (!item || !item.optArrayBuffer) return;
+
+            const blob = new Blob([item.optArrayBuffer], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            const dotIdx = item.file.name.lastIndexOf('.');
-            const baseName = dotIdx !== -1 ? item.file.name.substring(0, dotIdx) : item.file.name;
-            a.download = `${baseName}_optimized.pdf`;
-            
+            a.download = item.name.replace(/\.pdf$/i, '_optimized.pdf');
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
 
-        function downloadAllProcessedFiles() {
-            const completed = filesQueue.filter(f => f.status === 'completed');
-            completed.forEach((item, index) => {
-                setTimeout(() => downloadSingleFile(item.id), index * 300);
-            });
-        }
+        async function downloadAllZip() {
+            const zip = new JSZip();
+            let count = 0;
 
-        async function previewFileComparison(id) {
-            const item = filesQueue.find(f => f.id === id);
-            if (!item || !item.processedBlob) return;
-
-            currentPreviewFile = item;
-            currentPreviewPageNum = 1;
-            resetZoomAndPan();
-
-            document.getElementById('preview-modal').classList.remove('hidden');
-            document.getElementById('modal-filename').innerText = item.file.name;
-            document.getElementById('modal-file-status').innerText = `Gốc: ${item.originalSizeFormatted} ➔ Sau tối ưu: ${item.processedSizeFormatted}`;
-
-            setupSliderEvents();
-            setupPanZoomEvents();
-
-            await renderPreviewPage();
-        }
-
-        function switchPreviewMode(mode) {
-            previewMode = mode;
-            const btnSide = document.getElementById('mode-btn-side');
-            const btnSlider = document.getElementById('mode-btn-slider');
-            const viewSide = document.getElementById('view-side-by-side');
-            const viewSlider = document.getElementById('view-slider-mode');
-
-            if (mode === 'side') {
-                btnSide.className = 'px-3 py-1 rounded-md font-semibold text-slate-700 transition bg-white shadow-sm';
-                btnSlider.className = 'px-3 py-1 rounded-md font-semibold text-slate-500 hover:text-slate-800 transition';
-                viewSide.classList.remove('hidden');
-                viewSide.classList.add('grid');
-                viewSlider.classList.add('hidden');
-            } else {
-                btnSlider.className = 'px-3 py-1 rounded-md font-semibold text-slate-700 transition bg-white shadow-sm';
-                btnSide.className = 'px-3 py-1 rounded-md font-semibold text-slate-500 hover:text-slate-800 transition';
-                viewSlider.classList.remove('hidden');
-                viewSlider.classList.add('flex');
-                viewSide.classList.add('hidden');
-                viewSide.classList.remove('grid');
-            }
-
-            renderPreviewPage();
-        }
-
-        async function changePreviewPage(delta) {
-            if (!currentPreviewFile) return;
-            const newPage = currentPreviewPageNum + delta;
-            if (newPage >= 1 && newPage <= currentPreviewFile.pageCount) {
-                currentPreviewPageNum = newPage;
-                await renderPreviewPage();
-            }
-        }
-
-        async function renderPreviewPage() {
-            const item = currentPreviewFile;
-            if (!item) return;
-
-            document.getElementById('page-num-display').innerText = `Trang ${currentPreviewPageNum} / ${item.pageCount}`;
-            document.getElementById('btn-prev-page').disabled = (currentPreviewPageNum <= 1);
-            document.getElementById('btn-next-page').disabled = (currentPreviewPageNum >= item.pageCount);
-
-            // Render Original Canvas
-            const origBuffer = await item.file.arrayBuffer();
-            const origPdf = await pdfjsLib.getDocument({ data: origBuffer.slice(0) }).promise;
-            const origPage = await origPdf.getPage(currentPreviewPageNum);
-            
-            const canvasOrig = document.getElementById('preview-canvas-orig');
-            const canvasSliderOrig = document.getElementById('slider-canvas-orig');
-
-            const viewportOrig = origPage.getViewport({ scale: 1.0 });
-            canvasOrig.width = viewportOrig.width;
-            canvasOrig.height = viewportOrig.height;
-            canvasSliderOrig.width = viewportOrig.width;
-            canvasSliderOrig.height = viewportOrig.height;
-
-            await origPage.render({ canvasContext: canvasOrig.getContext('2d'), viewport: viewportOrig }).promise;
-            await origPage.render({ canvasContext: canvasSliderOrig.getContext('2d'), viewport: viewportOrig }).promise;
-
-            const origW = Math.round(viewportOrig.width * PT_TO_MM);
-            const origH = Math.round(viewportOrig.height * PT_TO_MM);
-            document.getElementById('preview-dim-orig').innerText = `Kích thước: ${origW} × ${origH} mm (${detectPaperFormat(origW, origH)})`;
-            document.getElementById('preview-size-orig').innerText = `Dung lượng gốc: ${item.originalSizeFormatted}`;
-
-            // Render Processed Canvas
-            const optBuffer = await item.processedBlob.arrayBuffer();
-            const optPdf = await pdfjsLib.getDocument({ data: optBuffer.slice(0) }).promise;
-            const optPage = await optPdf.getPage(currentPreviewPageNum);
-
-            const canvasOpt = document.getElementById('preview-canvas-opt');
-            const canvasSliderOpt = document.getElementById('slider-canvas-opt');
-
-            const viewportOpt = optPage.getViewport({ scale: 1.0 });
-            canvasOpt.width = viewportOpt.width;
-            canvasOpt.height = viewportOpt.height;
-            canvasSliderOpt.width = viewportOpt.width;
-            canvasSliderOpt.height = viewportOpt.height;
-
-            await optPage.render({ canvasContext: canvasOpt.getContext('2d'), viewport: viewportOpt }).promise;
-            await optPage.render({ canvasContext: canvasSliderOpt.getContext('2d'), viewport: viewportOpt }).promise;
-
-            const optW = Math.round(viewportOpt.width * PT_TO_MM);
-            const optH = Math.round(viewportOpt.height * PT_TO_MM);
-            document.getElementById('preview-dim-opt').innerText = `Kích thước: ${optW} × ${optH} mm (${detectPaperFormat(optW, optH)})`;
-            document.getElementById('preview-size-opt').innerText = `Dung lượng sau nén: ${item.processedSizeFormatted} (-${item.savings}%)`;
-        }
-
-        function adjustZoom(delta) {
-            currentZoom = Math.min(Math.max(0.4, currentZoom + delta), 3.5);
-            updateViewportTransform();
-        }
-
-        function resetZoomAndPan() {
-            currentZoom = 1.0;
-            panX = 0;
-            panY = 0;
-            updateViewportTransform();
-        }
-
-        function updateViewportTransform() {
-            const viewport = document.getElementById('zoom-pan-viewport');
-            const zoomText = document.getElementById('zoom-level-text');
-            if (viewport) {
-                viewport.style.transform = `scale(${currentZoom}) translate(${panX}px, ${panY}px)`;
-            }
-            if (zoomText) {
-                zoomText.innerText = `${Math.round(currentZoom * 100)}%`;
-            }
-        }
-
-        function setupPanZoomEvents() {
-            const wrapper = document.getElementById('preview-scroll-wrapper');
-            if (!wrapper) return;
-
-            wrapper.onmousedown = (e) => {
-                if (isSliderDragging) return;
-                isPanning = true;
-                startPanX = e.clientX - panX;
-                startPanY = e.clientY - panY;
-            };
-
-            window.onmousemove = (e) => {
-                if (isSliderDragging) {
-                    handleSliderMove(e.clientX);
-                    return;
+            filesQueue.forEach(item => {
+                if (item.optArrayBuffer) {
+                    const name = item.name.replace(/\.pdf$/i, '_optimized.pdf');
+                    zip.file(name, item.optArrayBuffer);
+                    count++;
                 }
-                if (!isPanning) return;
-                panX = e.clientX - startPanX;
-                panY = e.clientY - startPanY;
-                updateViewportTransform();
-            };
+            });
 
-            window.onmouseup = () => {
-                isPanning = false;
-                isSliderDragging = false;
-            };
-        }
-
-        function setupSliderEvents() {
-            const handle = document.getElementById('slider-divider');
-            if (!handle) return;
-
-            handle.onmousedown = (e) => {
-                e.stopPropagation();
-                isSliderDragging = true;
-            };
-
-            const box = document.getElementById('slider-box');
-            if (box) {
-                box.onclick = (e) => handleSliderMove(e.clientX);
+            if (count === 0) {
+                showToast('Chưa có file nào hoàn thành tối ưu!', 'error');
+                return;
             }
+
+            const content = await zip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(content);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'PDF_Optimized_Studio.zip';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('Đã tải gói ZIP chứa tất cả các file!', 'success');
         }
 
-        function handleSliderMove(clientX) {
-            const wrapper = document.getElementById('slider-canvas-wrapper');
-            if (!wrapper) return;
-            const rect = wrapper.getBoundingClientRect();
-            let offsetX = clientX - rect.left;
-            offsetX = Math.max(0, Math.min(offsetX, rect.width));
-            const percentage = (offsetX / rect.width) * 100;
-
-            const optCanvas = document.getElementById('slider-canvas-opt');
-            const divider = document.getElementById('slider-divider');
-
-            if (optCanvas) {
-                optCanvas.style.clipPath = `inset(0 calc(100% - ${percentage}%) 0 0)`;
-            }
-            if (divider) {
-                divider.style.left = percentage + '%';
-            }
-        }
-
-        function closePreviewModal() {
-            document.getElementById('preview-modal').classList.add('hidden');
-            currentPreviewFile = null;
-        }
-
-        function openHelpModal() {
-            document.getElementById('help-modal').classList.remove('hidden');
-        }
-
-        function closeHelpModal() {
-            document.getElementById('help-modal').classList.add('hidden');
-        }
-
-        // Helpers
         function formatBytes(bytes, decimals = 2) {
-            if (bytes === 0) return '0 Bytes';
+            if (!bytes || bytes === 0) return '0 Bytes';
             const k = 1024;
             const dm = decimals < 0 ? 0 : decimals;
             const sizes = ['Bytes', 'KB', 'MB', 'GB'];
@@ -1444,8 +1797,16 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
 
-        function escapeHtml(str) {
-            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        function escapeHtml(text) {
+            return String(text).replace(/[&<>"']/g, function(m) {
+                return {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                }[m];
+            });
         }
     </script>
 </body>
