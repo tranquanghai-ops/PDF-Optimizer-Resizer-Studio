@@ -79,14 +79,19 @@
     }
 
     function addToolbarButtons() {
-        const mergeButton = document.querySelector('button[onclick="openMergeModal()"]');
-        if (!mergeButton || document.getElementById('v54-image-tool-button')) return;
+        const dropZone = document.getElementById('drop-zone');
+        if (!dropZone || document.getElementById('v54-image-tool-button')) return;
+        const toolbar = document.createElement('div');
+        toolbar.id = 'v54-conversion-tools';
+        toolbar.className = 'flex flex-wrap items-center justify-end gap-2 -mt-3 mb-6';
+        toolbar.innerHTML = '<span class="text-[11px] font-semibold text-slate-400 mr-1">Công cụ chuyển đổi:</span>';
         const imageButton = document.createElement('button');
         imageButton.id = 'v54-image-tool-button';
         imageButton.className = 'bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg transition-all flex items-center gap-2';
         imageButton.innerHTML = '<i class="fa-solid fa-images"></i> Ảnh → PDF';
         imageButton.addEventListener('click', openImageTool);
-        mergeButton.insertAdjacentElement('afterend', imageButton);
+        toolbar.appendChild(imageButton);
+        dropZone.insertAdjacentElement('afterend', toolbar);
     }
 
     function enhanceQueueRows() {
