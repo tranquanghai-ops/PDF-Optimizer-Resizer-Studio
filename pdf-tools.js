@@ -263,6 +263,8 @@
             return saved;
         } catch (error) {
             if (typeof isCancellationError === 'function' && isCancellationError(error)) throw error;
+            const activeTask = typeof activeOptimizationTasks !== 'undefined' ? activeOptimizationTasks.get(item.id) : null;
+            if (activeTask?.cancelled && typeof createCancellationError === 'function') throw createCancellationError();
             console.warn('Tự cắt viền không khả dụng, dùng PDF gốc:', error);
             if (typeof showToast === 'function') showToast(`Không thể tự cắt viền: ${error.message}. Tiếp tục bằng trang gốc.`, 'info');
             return new Uint8Array(originalBuffer);
