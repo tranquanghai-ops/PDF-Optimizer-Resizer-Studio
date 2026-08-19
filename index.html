@@ -26,7 +26,7 @@
             try {
                 const doc = frame.contentDocument;
                 const script = doc.createElement('script');
-                script.src = 'pdf-tools.js?v=5.4';
+                script.src = 'pdf-tools.js?v=5.4.1';
                 script.onload = () => loading.remove();
                 script.onerror = () => {
                     loading.innerHTML = '<strong>Không tải được bộ công cụ V5.4.</strong><span>Vui lòng tải lại trang bằng Ctrl + F5.</span>';
