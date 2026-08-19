@@ -18,24 +18,52 @@
 </head>
 <body>
     <div id="loading"><span class="spinner"></span><span>Đang khởi động PDF Optimizer Studio V5.4...</span></div>
-    <iframe id="app-frame" src="app-v53.html" title="PDF Optimizer Studio" allow="fullscreen" allowfullscreen></iframe>
+    <iframe id="app-frame" title="PDF Optimizer Studio" allow="fullscreen" allowfullscreen></iframe>
     <script>
         const frame = document.getElementById('app-frame');
         const loading = document.getElementById('loading');
-        frame.addEventListener('load', () => {
+        let appStarted = false;
+
+        function showStartupError(message) {
+            if (!loading || !loading.isConnected) return;
+            loading.innerHTML = `
+                <strong>Không thể khởi động ứng dụng.</strong>
+                <span>${message}</span>
+                <button id="retry-startup" type="button" style="margin-top:6px;padding:9px 16px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer">
+                    Tải lại ứng dụng
+                </button>
+            `;
+            document.getElementById('retry-startup')?.addEventListener('click', () => location.reload());
+        }
+
+        function startApp() {
+            if (appStarted) return;
             try {
                 const doc = frame.contentDocument;
+                if (!doc || !doc.body) throw new Error('Nội dung ứng dụng chưa sẵn sàng.');
+                appStarted = true;
                 const script = doc.createElement('script');
-                script.src = 'pdf-tools.js?v=5.4.2';
-                script.onload = () => loading.remove();
-                script.onerror = () => {
-                    loading.innerHTML = '<strong>Không tải được bộ công cụ V5.4.</strong><span>Vui lòng tải lại trang bằng Ctrl + F5.</span>';
-                };
+                script.src = 'pdf-tools.js?v=5.4.3';
+                script.dataset.pdfTools = 'v5.4.3';
+                script.onload = () => loading?.remove();
+                script.onerror = () => showStartupError('Không tải được bộ công cụ V5.4. Vui lòng thử tải lại.');
                 doc.body.appendChild(script);
             } catch (error) {
-                loading.innerHTML = '<strong>Không thể khởi động ứng dụng.</strong><span>' + error.message + '</span>';
+                appStarted = false;
+                showStartupError(error.message);
             }
-        });
+        }
+
+        // Gắn sự kiện trước rồi mới nạp iframe để không bỏ lỡ sự kiện load khi trình duyệt dùng cache.
+        frame.addEventListener('load', startApp);
+        frame.src = 'app-v53.html?v=5.4.3';
+
+        // Không để màn hình xoay vô hạn nếu mạng hoặc bộ nhớ đệm gặp sự cố.
+        setTimeout(() => {
+            if (loading?.isConnected) {
+                showStartupError('Quá trình tải mất quá nhiều thời gian.');
+            }
+        }, 120000);
     </script>
 </body>
 </html>
