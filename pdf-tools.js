@@ -1,7 +1,7 @@
 (() => {
     'use strict';
 
-    const TOOL_VERSION = '5.5';
+    const TOOL_VERSION = '5.6';
     const MM_TO_PT = 2.834645669;
     const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.min.js';
     const TESSDATA_BEST_URL = 'https://tessdata.projectnaptha.com/4.0.0_best';
@@ -457,22 +457,36 @@
                     <div class="v54-toolbar">
                         <input id="v55-ocr-input" type="file" accept="application/pdf,.pdf" class="hidden">
                         <button id="v55-ocr-select" class="v54-btn v54-btn-primary"><i class="fa-solid fa-file-pdf"></i> Chọn PDF</button>
+                        <label class="text-xs font-semibold text-slate-600 ml-1" for="v55-ocr-language">Ngôn ngữ</label>
+                        <select id="v55-ocr-language" class="v54-input">
+                            <option value="vie" selected>Tiếng Việt — chính xác hơn</option>
+                            <option value="vie+eng">Việt + Anh — tài liệu song ngữ</option>
+                        </select>
                         <label class="text-xs font-semibold text-slate-600 ml-1" for="v55-ocr-dpi">Độ nét OCR</label>
                         <select id="v55-ocr-dpi" class="v54-input">
                             <option value="200">200 DPI — nhanh</option>
-                            <option value="250" selected>250 DPI — khuyên dùng</option>
-                            <option value="300">300 DPI — chữ nhỏ</option>
+                            <option value="250">250 DPI — cân bằng</option>
+                            <option value="300" selected>300 DPI — khuyên dùng</option>
+                            <option value="400">400 DPI — chữ rất nhỏ</option>
                         </select>
                         <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 ml-1">
                             <input id="v55-ocr-skip-text" type="checkbox" checked>
                             Bỏ qua trang đã có chữ
+                        </label>
+                        <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 ml-1">
+                            <input id="v55-ocr-high-accuracy" type="checkbox" checked>
+                            Chính xác cao (2 lượt)
+                        </label>
+                        <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 ml-1">
+                            <input id="v55-ocr-auto-correct" type="checkbox" checked>
+                            Sửa lỗi học thuật phổ biến
                         </label>
                     </div>
                     <div class="min-h-0 flex-1 overflow-auto p-4 bg-slate-100">
                         <div id="v55-ocr-drop" class="v54-drop">
                             <i class="fa-solid fa-cloud-arrow-up text-3xl text-sky-500 mb-2"></i>
                             <div class="font-bold">Kéo thả một file PDF dạng ảnh vào đây</div>
-                            <div class="text-xs mt-1">Mô hình tiếng Việt + tiếng Anh được tải ở lần chạy đầu; toàn bộ OCR thực hiện trên máy</div>
+                            <div class="text-xs mt-1">Mặc định dùng mô hình tiếng Việt chất lượng cao; toàn bộ OCR thực hiện trên máy</div>
                         </div>
                         <div id="v55-ocr-file" class="v54-hidden mt-3 p-3 rounded-xl border border-sky-200 bg-white"></div>
                         <div class="mt-4">
@@ -736,6 +750,69 @@
         return lines;
     }
 
+    function preserveOcrCase(source, replacement) {
+        if (source === source.toUpperCase()) return replacement.toUpperCase();
+        if (source[0] === source[0].toUpperCase()) return replacement[0].toUpperCase() + replacement.slice(1);
+        return replacement;
+    }
+
+    function correctCommonVietnameseOcr(text) {
+        const replacements = [
+            [/đồ\s+(?:ó\s+)?an/giu, 'đồ án'],
+            [/thi[eế]t\s+k[eế]\s+nội\s+th[aấ]t/giu, 'thiết kế nội thất'],
+            [/trung\s+tam/giu, 'trung tâm'],
+            [/ch[aă]m\s+s[oó]c/giu, 'chăm sóc'],
+            [/th[uú]\s+cung/giu, 'thú cưng'],
+            [/ph[aầ]n\s+giới\s+thiệu/giu, 'phần giới thiệu'],
+            [/th[éeôó]ng\s+tin\s+chung\s+(?:d[eéề]\s*)?t[aàá]i/giu, 'thông tin chung đề tài'],
+            [/l[úyý]\s+do\s+ch[oọ]n\s+(?:d[eéề]\s*)?t[aàá]i/giu, 'lý do chọn đề tài'],
+            [/phạm\s*vi\s+v[aà]\s+giới\s+hạn\s+nghi[eê]n\s+c[uứ]u/giu, 'phạm vi và giới hạn nghiên cứu'],
+            [/[yý]\s+tưởng\s+thi[eế]t\s+k[eế]/giu, 'ý tưởng thiết kế'],
+            [/tp\.\s*h[oồ]\s*chí\s*minh/giu, 'TP. Hồ Chí Minh']
+        ];
+        return replacements.reduce((result, [pattern, replacement]) =>
+            result.replace(pattern, match => preserveOcrCase(match, replacement)), String(text || '').normalize('NFC'));
+    }
+
+    function enhanceOcrCanvas(sourceCanvas) {
+        const canvas = document.createElement('canvas');
+        canvas.width = sourceCanvas.width;
+        canvas.height = sourceCanvas.height;
+        const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+        context.fillStyle = '#fff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.filter = 'grayscale(1) contrast(1.38)';
+        context.drawImage(sourceCanvas, 0, 0);
+        context.filter = 'none';
+        return canvas;
+    }
+
+    function scoreOcrResult(result) {
+        const text = String(result?.data?.text || '');
+        const confidence = Number(result?.data?.confidence || 0);
+        const vietnameseMarks = (text.match(/[ăâđêôơưĂÂĐÊÔƠƯáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/gu) || []).length;
+        const noise = (text.match(/[#|^`{}\[\]<>]/g) || []).length;
+        const usefulLength = text.replace(/\s/g, '').length;
+        return confidence + Math.min(8, vietnameseMarks * .08) - Math.min(18, noise * 2) + Math.min(4, usefulLength / 500);
+    }
+
+    async function recognizeOcrPage(worker, canvas, highAccuracy, pageTextHint) {
+        await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO });
+        const first = await worker.recognize(canvas, {}, { text: true, blocks: true });
+        if (!highAccuracy) return first;
+        const enhanced = enhanceOcrCanvas(canvas);
+        try {
+            const sparseLayout = String(first.data.text || pageTextHint || '').replace(/\s/g, '').length < 450;
+            await worker.setParameters({ tessedit_pageseg_mode: sparseLayout ? Tesseract.PSM.SPARSE_TEXT : Tesseract.PSM.AUTO });
+            const second = await worker.recognize(enhanced, {}, { text: true, blocks: true });
+            return scoreOcrResult(second) > scoreOcrResult(first) ? second : first;
+        } finally {
+            enhanced.width = 1;
+            enhanced.height = 1;
+            await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO });
+        }
+    }
+
     function filterFontText(text, supportedCodePoints) {
         return Array.from(String(text || ''))
             .filter(character => {
@@ -826,10 +903,13 @@
             const unicodeFont = await outputDoc.embedFont(await fontResponse.arrayBuffer(), { subset: true });
             const supportedCodePoints = new Set(unicodeFont.getCharacterSet());
             const pdfPages = outputDoc.getPages();
-            const dpi = Number(document.getElementById('v55-ocr-dpi').value || 250);
+            const dpi = Number(document.getElementById('v55-ocr-dpi').value || 300);
+            const language = document.getElementById('v55-ocr-language').value || 'vie';
+            const highAccuracy = document.getElementById('v55-ocr-high-accuracy').checked;
+            const autoCorrect = document.getElementById('v55-ocr-auto-correct').checked;
             const skipExistingText = document.getElementById('v55-ocr-skip-text').checked;
             let activePage = 0;
-            ocrState.worker = await Tesseract.createWorker('vie+eng', Tesseract.OEM.LSTM_ONLY, {
+            ocrState.worker = await Tesseract.createWorker(language, Tesseract.OEM.LSTM_ONLY, {
                 langPath: TESSDATA_BEST_URL,
                 logger: message => {
                     if (!ocrState.running || !message) return;
@@ -842,7 +922,9 @@
             await ocrState.worker.setParameters({
                 tessedit_pageseg_mode: Tesseract.PSM.AUTO,
                 preserve_interword_spaces: '1',
-                user_defined_dpi: String(dpi)
+                user_defined_dpi: String(dpi),
+                thresholding_method: '2',
+                tessedit_do_invert: '1'
             });
             const extractedPages = [];
             let recognizedPages = 0;
@@ -875,9 +957,13 @@
                 context.fillStyle = '#fff';
                 context.fillRect(0, 0, canvas.width, canvas.height);
                 await sourcePage.render({ canvasContext: context, viewport }).promise;
-                const result = await ocrState.worker.recognize(canvas, {}, { text: true, blocks: true });
-                const lines = flattenOcrLines(result.data.blocks);
-                const pageText = String(result.data.text || lines.map(line => line.text).join('\n')).trim().normalize('NFC');
+                const result = await recognizeOcrPage(ocrState.worker, canvas, highAccuracy, '');
+                const lines = flattenOcrLines(result.data.blocks).map(line => ({
+                    ...line,
+                    text: autoCorrect ? correctCommonVietnameseOcr(line.text) : line.text
+                }));
+                const rawPageText = String(result.data.text || lines.map(line => line.text).join('\n')).trim().normalize('NFC');
+                const pageText = autoCorrect ? correctCommonVietnameseOcr(rawPageText) : rawPageText;
                 extractedPages.push(pageText);
                 for (const line of lines) addInvisibleOcrLine(pdfPages[pageNumber - 1], unicodeFont, supportedCodePoints, line, canvas.width, canvas.height);
                 recognizedPages++;
