@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Optimizer & Resizer Studio V5.4</title>
+    <title>PDF Optimizer & Resizer Studio V5.5</title>
     <style>
         html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #f8fafc; }
         #app-frame { width: 100%; height: 100%; border: 0; display: block; }
@@ -17,7 +17,7 @@
     </style>
 </head>
 <body>
-    <div id="loading"><span class="spinner"></span><span>Đang khởi động PDF Optimizer Studio V5.4...</span></div>
+    <div id="loading"><span class="spinner"></span><span>Đang khởi động PDF Optimizer Studio V5.5...</span></div>
     <iframe id="app-frame" title="PDF Optimizer Studio" allow="fullscreen" allowfullscreen></iframe>
     <script>
         const frame = document.getElementById('app-frame');
@@ -43,10 +43,10 @@
                 if (!doc || !doc.body) throw new Error('Nội dung ứng dụng chưa sẵn sàng.');
                 appStarted = true;
                 const script = doc.createElement('script');
-                script.src = 'pdf-tools.js?v=5.4.3';
-                script.dataset.pdfTools = 'v5.4.3';
+                script.src = 'pdf-tools.js?v=5.5.0';
+                script.dataset.pdfTools = 'v5.5.0';
                 script.onload = () => loading?.remove();
-                script.onerror = () => showStartupError('Không tải được bộ công cụ V5.4. Vui lòng thử tải lại.');
+                script.onerror = () => showStartupError('Không tải được bộ công cụ V5.5. Vui lòng thử tải lại.');
                 doc.body.appendChild(script);
             } catch (error) {
                 appStarted = false;
@@ -56,7 +56,7 @@
 
         // Gắn sự kiện trước rồi mới nạp iframe để không bỏ lỡ sự kiện load khi trình duyệt dùng cache.
         frame.addEventListener('load', startApp);
-        frame.src = 'app-v53.html?v=5.4.3';
+        frame.src = 'app-v53.html?v=5.5.0';
 
         // Không để màn hình xoay vô hạn nếu mạng hoặc bộ nhớ đệm gặp sự cố.
         setTimeout(() => {
