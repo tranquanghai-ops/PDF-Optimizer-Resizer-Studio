@@ -1,7 +1,7 @@
 (() => {
     'use strict';
 
-    const TOOL_VERSION = '5.6';
+    const TOOL_VERSION = '5.7';
     const MM_TO_PT = 2.834645669;
     const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.min.js';
     const TESSDATA_BEST_URL = 'https://tessdata.projectnaptha.com/4.0.0_best';
@@ -24,7 +24,11 @@
         file: null,
         running: false,
         cancelRequested: false,
+        runToken: 0,
         worker: null,
+        renderTask: null,
+        loadingTask: null,
+        abortController: null,
         outputBlob: null,
         outputName: '',
         extractedText: '',
@@ -132,7 +136,7 @@
         const ocrButton = document.createElement('button');
         ocrButton.id = 'v55-ocr-tool-button';
         ocrButton.className = 'bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg transition-all flex items-center gap-2';
-        ocrButton.innerHTML = '<i class="fa-solid fa-spell-check"></i> OCR cho Turnitin';
+        ocrButton.innerHTML = '<i class="fa-solid fa-spell-check"></i> PDF to OCR';
         ocrButton.addEventListener('click', openOcrTool);
         toolbar.appendChild(ocrButton);
         dropZone.insertAdjacentElement('afterend', toolbar);
@@ -449,8 +453,8 @@
                 <div class="v54-panel" style="width:min(1050px,98vw)">
                     <div class="v54-header">
                         <div>
-                            <div id="v55-ocr-title" class="font-bold"><i class="fa-solid fa-spell-check text-sky-400 mr-2"></i>OCR PDF tiếng Việt cho Turnitin</div>
-                            <div class="text-[11px] text-slate-400 mt-0.5">Giữ nguyên hình ảnh • thêm lớp chữ Unicode có thể bôi chọn và tìm kiếm</div>
+                            <div id="v55-ocr-title" class="font-bold"><i class="fa-solid fa-spell-check text-sky-400 mr-2"></i>PDF to OCR</div>
+                            <div class="text-[11px] text-slate-400 mt-0.5">Nhận dạng tiếng Việt • giữ nguyên hình ảnh • thêm lớp chữ Unicode có thể tìm kiếm</div>
                         </div>
                         <button id="v55-ocr-close" class="v54-close" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button>
                     </div>
@@ -471,7 +475,7 @@
                         </select>
                         <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 ml-1">
                             <input id="v55-ocr-skip-text" type="checkbox" checked>
-                            Bỏ qua trang đã có chữ
+                            Bỏ qua trang đã có đủ chữ
                         </label>
                         <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 ml-1">
                             <input id="v55-ocr-high-accuracy" type="checkbox" checked>
@@ -504,14 +508,14 @@
                             <textarea id="v55-ocr-preview" class="v55-ocr-preview" readonly placeholder="Nội dung nhận dạng sẽ xuất hiện tại đây…"></textarea>
                         </div>
                         <div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
-                            <strong>Lưu ý:</strong> OCR giúp Turnitin đọc PDF dạng ảnh nhưng không thể đảm bảo đúng tuyệt đối. Hãy kiểm tra tên riêng, dấu tiếng Việt và thứ tự cột trước khi nộp.
+                            <strong>Lưu ý:</strong> OCR không thể đảm bảo đúng tuyệt đối. Hãy kiểm tra tên riêng, dấu tiếng Việt và thứ tự cột trước khi sử dụng.
                         </div>
                     </div>
                     <div class="v54-section flex flex-wrap items-center gap-2">
                         <button id="v55-ocr-reset" class="v54-btn v54-btn-danger"><i class="fa-solid fa-trash-arrow-up"></i> Chọn file khác</button>
                         <div class="ml-auto flex flex-wrap gap-2">
                             <button id="v55-ocr-download-text" class="v54-btn" disabled><i class="fa-solid fa-file-lines"></i> Tải TXT kiểm tra</button>
-                            <button id="v55-ocr-download" class="v54-btn v54-btn-green" disabled><i class="fa-solid fa-download"></i> Tải PDF cho Turnitin</button>
+                            <button id="v55-ocr-download" class="v54-btn v54-btn-green" disabled><i class="fa-solid fa-download"></i> Tải PDF OCR</button>
                             <button id="v55-ocr-start" class="v54-btn v54-btn-primary"><i class="fa-solid fa-wand-magic-sparkles"></i> Bắt đầu OCR</button>
                         </div>
                     </div>
@@ -758,7 +762,7 @@
 
     function correctCommonVietnameseOcr(text) {
         const replacements = [
-            [/đồ\s+(?:ó\s+)?an/giu, 'đồ án'],
+            [/đ[ồôó]\s*(?:ó\s*)?[aá]n/giu, 'đồ án'],
             [/thi[eế]t\s+k[eế]\s+nội\s+th[aấ]t/giu, 'thiết kế nội thất'],
             [/trung\s+tam/giu, 'trung tâm'],
             [/ch[aă]m\s+s[oó]c/giu, 'chăm sóc'],
@@ -772,6 +776,84 @@
         ];
         return replacements.reduce((result, [pattern, replacement]) =>
             result.replace(pattern, match => preserveOcrCase(match, replacement)), String(text || '').normalize('NFC'));
+    }
+
+    function ocrLineMatchScore(firstLine, secondLine) {
+        const first = firstLine?.bbox;
+        const second = secondLine?.bbox;
+        if (!first || !second) return 0;
+        const overlapWidth = Math.max(0, Math.min(first.x1, second.x1) - Math.max(first.x0, second.x0));
+        const overlapHeight = Math.max(0, Math.min(first.y1, second.y1) - Math.max(first.y0, second.y0));
+        const firstWidth = Math.max(1, first.x1 - first.x0);
+        const secondWidth = Math.max(1, second.x1 - second.x0);
+        const firstHeight = Math.max(1, first.y1 - first.y0);
+        const secondHeight = Math.max(1, second.y1 - second.y0);
+        const verticalOverlap = overlapHeight / Math.min(firstHeight, secondHeight);
+        const horizontalOverlap = overlapWidth / Math.min(firstWidth, secondWidth);
+        const firstCenterX = (first.x0 + first.x1) / 2;
+        const secondCenterX = (second.x0 + second.x1) / 2;
+        const centerDistance = Math.abs(firstCenterX - secondCenterX) / Math.max(firstWidth, secondWidth);
+        if (verticalOverlap < .38 || (horizontalOverlap < .12 && centerDistance > .55)) return 0;
+        return verticalOverlap * .7 + horizontalOverlap * .3;
+    }
+
+    function scoreOcrLine(line) {
+        const text = String(line?.text || '').trim();
+        const confidence = Number(line?.confidence || 0);
+        const usefulLength = text.replace(/\s/g, '').length;
+        const vietnameseMarks = (text.match(/[ăâđêôơưĂÂĐÊÔƠƯáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/gu) || []).length;
+        const noise = (text.match(/[#|^`{}\[\]<>]/g) || []).length;
+        return confidence + Math.min(14, usefulLength * .14) + Math.min(8, vietnameseMarks * .45) - noise * 3;
+    }
+
+    function chooseBetterOcrLine(firstLine, secondLine) {
+        const firstLength = String(firstLine?.text || '').replace(/\s/g, '').length;
+        const secondLength = String(secondLine?.text || '').replace(/\s/g, '').length;
+        const firstConfidence = Number(firstLine?.confidence || 0);
+        const secondConfidence = Number(secondLine?.confidence || 0);
+        // Không thay một dòng tương đối đầy đủ bằng kết quả ngắn hơn nhiều.
+        if (secondLength < firstLength * .68 && firstConfidence >= 25) return firstLine;
+        if (firstLength < secondLength * .68 && secondConfidence >= 25) return secondLine;
+        return scoreOcrLine(secondLine) > scoreOcrLine(firstLine) ? secondLine : firstLine;
+    }
+
+    function mergeOcrLineSets(firstLines, secondLines) {
+        const merged = (firstLines || []).map(line => ({ ...line }));
+        for (const candidate of secondLines || []) {
+            const text = String(candidate?.text || '').replace(/\s+/g, ' ').trim();
+            if (!text || !candidate.bbox) continue;
+            let bestIndex = -1;
+            let bestScore = 0;
+            for (let index = 0; index < merged.length; index++) {
+                const score = ocrLineMatchScore(merged[index], candidate);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestIndex = index;
+                }
+            }
+            if (bestIndex >= 0 && bestScore >= .36) {
+                merged[bestIndex] = { ...chooseBetterOcrLine(merged[bestIndex], candidate) };
+            } else if (text.replace(/\s/g, '').length >= 2 && Number(candidate.confidence || 0) >= 18) {
+                merged.push({ ...candidate, text });
+            }
+        }
+        const unique = [];
+        for (const line of merged) {
+            const normalized = String(line.text || '').toLocaleLowerCase('vi').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+            const duplicate = unique.some(existing => {
+                const existingText = String(existing.text || '').toLocaleLowerCase('vi').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+                return normalized && normalized === existingText && ocrLineMatchScore(existing, line) >= .42;
+            });
+            if (!duplicate) unique.push(line);
+        }
+        return unique.sort((first, second) => {
+            const firstHeight = Math.max(1, first.bbox.y1 - first.bbox.y0);
+            const secondHeight = Math.max(1, second.bbox.y1 - second.bbox.y0);
+            const rowTolerance = Math.min(firstHeight, secondHeight) * .55;
+            return Math.abs(first.bbox.y0 - second.bbox.y0) > rowTolerance
+                ? first.bbox.y0 - second.bbox.y0
+                : first.bbox.x0 - second.bbox.x0;
+        });
     }
 
     function enhanceOcrCanvas(sourceCanvas) {
@@ -799,17 +881,32 @@
     async function recognizeOcrPage(worker, canvas, highAccuracy, pageTextHint) {
         await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO });
         const first = await worker.recognize(canvas, {}, { text: true, blocks: true });
-        if (!highAccuracy) return first;
+        const firstLines = flattenOcrLines(first.data.blocks);
+        if (!highAccuracy) {
+            first.data.lines = firstLines;
+            return first;
+        }
         const enhanced = enhanceOcrCanvas(canvas);
         try {
             const sparseLayout = String(first.data.text || pageTextHint || '').replace(/\s/g, '').length < 450;
             await worker.setParameters({ tessedit_pageseg_mode: sparseLayout ? Tesseract.PSM.SPARSE_TEXT : Tesseract.PSM.AUTO });
             const second = await worker.recognize(enhanced, {}, { text: true, blocks: true });
-            return scoreOcrResult(second) > scoreOcrResult(first) ? second : first;
+            const secondLines = flattenOcrLines(second.data.blocks);
+            const mergedLines = mergeOcrLineSets(firstLines, secondLines);
+            const preferred = scoreOcrResult(second) > scoreOcrResult(first) ? second : first;
+            return {
+                ...preferred,
+                data: {
+                    ...preferred.data,
+                    lines: mergedLines,
+                    text: mergedLines.map(line => line.text).join('\n'),
+                    confidence: Math.max(Number(first.data.confidence || 0), Number(second.data.confidence || 0))
+                }
+            };
         } finally {
             enhanced.width = 1;
             enhanced.height = 1;
-            await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO });
+            try { await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO }); } catch (_) {}
         }
     }
 
@@ -880,6 +977,7 @@
 
     async function runOcr() {
         if (!ocrState.file) throw new Error('Hãy chọn một file PDF trước khi OCR.');
+        const runToken = ++ocrState.runToken;
         ocrState.cancelRequested = false;
         ocrState.outputBlob = null;
         ocrState.extractedText = '';
@@ -888,19 +986,34 @@
         document.getElementById('v55-ocr-download-text').disabled = true;
         setOcrRunning(true);
         let sourcePdf = null;
+        let localWorker = null;
+        let localLoadingTask = null;
+        let localRenderTask = null;
+        const abortController = new AbortController();
+        ocrState.abortController = abortController;
+        const assertActive = () => {
+            if (ocrState.cancelRequested || runToken !== ocrState.runToken) throw new Error('Đã dừng OCR.');
+        };
         try {
             await ensureOcrDependencies();
-            if (ocrState.cancelRequested) throw new Error('Đã dừng OCR.');
+            assertActive();
             const sourceBytes = await ocrState.file.arrayBuffer();
-            const loadingTask = pdfjsLib.getDocument({ data: sourceBytes.slice(0) });
-            sourcePdf = await loadingTask.promise;
+            assertActive();
+            localLoadingTask = pdfjsLib.getDocument({ data: sourceBytes.slice(0) });
+            ocrState.loadingTask = localLoadingTask;
+            sourcePdf = await localLoadingTask.promise;
+            assertActive();
+            if (ocrState.loadingTask === localLoadingTask) ocrState.loadingTask = null;
             ocrState.pageCount = sourcePdf.numPages;
             const outputDoc = await PDFLib.PDFDocument.load(sourceBytes.slice(0), { ignoreEncryption: true });
+            assertActive();
             outputDoc.registerFontkit(window.fontkit);
             setOcrProgress(3, 'Đang tải font Unicode tiếng Việt…', 'blue');
-            const fontResponse = await fetch(NOTO_SANS_URL);
+            const fontResponse = await fetch(NOTO_SANS_URL, { signal: abortController.signal });
+            assertActive();
             if (!fontResponse.ok) throw new Error(`Không tải được font Unicode (${fontResponse.status}).`);
             const unicodeFont = await outputDoc.embedFont(await fontResponse.arrayBuffer(), { subset: true });
+            assertActive();
             const supportedCodePoints = new Set(unicodeFont.getCharacterSet());
             const pdfPages = outputDoc.getPages();
             const dpi = Number(document.getElementById('v55-ocr-dpi').value || 300);
@@ -909,34 +1022,42 @@
             const autoCorrect = document.getElementById('v55-ocr-auto-correct').checked;
             const skipExistingText = document.getElementById('v55-ocr-skip-text').checked;
             let activePage = 0;
-            ocrState.worker = await Tesseract.createWorker(language, Tesseract.OEM.LSTM_ONLY, {
+            localWorker = await Tesseract.createWorker(language, Tesseract.OEM.LSTM_ONLY, {
                 langPath: TESSDATA_BEST_URL,
                 logger: message => {
-                    if (!ocrState.running || !message) return;
+                    if (!ocrState.running || runToken !== ocrState.runToken || !message) return;
                     const stage = String(message.status || 'Đang nhận dạng').replace(/^./, character => character.toUpperCase());
                     const pageProgress = Number(message.progress || 0);
                     const overall = 5 + ((activePage + pageProgress) / Math.max(1, ocrState.pageCount)) * 87;
                     setOcrProgress(overall, `Trang ${Math.min(activePage + 1, ocrState.pageCount)}/${ocrState.pageCount} • ${stage}`, 'blue');
                 }
             });
-            await ocrState.worker.setParameters({
+            assertActive();
+            ocrState.worker = localWorker;
+            await localWorker.setParameters({
                 tessedit_pageseg_mode: Tesseract.PSM.AUTO,
                 preserve_interword_spaces: '1',
                 user_defined_dpi: String(dpi),
                 thresholding_method: '2',
                 tessedit_do_invert: '1'
             });
+            assertActive();
             const extractedPages = [];
             let recognizedPages = 0;
             let skippedPages = 0;
             for (let pageNumber = 1; pageNumber <= sourcePdf.numPages; pageNumber++) {
-                if (ocrState.cancelRequested) throw new Error('Đã dừng OCR.');
+                assertActive();
                 activePage = pageNumber - 1;
                 const sourcePage = await sourcePdf.getPage(pageNumber);
+                assertActive();
                 if (skipExistingText) {
                     const existing = await sourcePage.getTextContent();
+                    assertActive();
                     const existingText = existing.items.map(item => item.str || '').join(' ').replace(/\s+/g, ' ').trim();
-                    if (existingText.length >= 20) {
+                    const existingWordCount = existingText.split(/\s+/).filter(word => /[\p{L}\p{N}]/u.test(word)).length;
+                    // Một vài dòng/page number không đồng nghĩa trang đã có lớp chữ đầy đủ.
+                    // Chỉ bỏ qua khi lượng chữ sẵn có đủ lớn để tránh bỏ sót nội dung nằm trong ảnh.
+                    if (existingText.length >= 180 && existingWordCount >= 28) {
                         extractedPages.push(existingText);
                         skippedPages++;
                         sourcePage.cleanup();
@@ -956,9 +1077,18 @@
                 const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
                 context.fillStyle = '#fff';
                 context.fillRect(0, 0, canvas.width, canvas.height);
-                await sourcePage.render({ canvasContext: context, viewport }).promise;
-                const result = await recognizeOcrPage(ocrState.worker, canvas, highAccuracy, '');
-                const lines = flattenOcrLines(result.data.blocks).map(line => ({
+                localRenderTask = sourcePage.render({ canvasContext: context, viewport });
+                ocrState.renderTask = localRenderTask;
+                try {
+                    await localRenderTask.promise;
+                } finally {
+                    if (ocrState.renderTask === localRenderTask) ocrState.renderTask = null;
+                    localRenderTask = null;
+                }
+                assertActive();
+                const result = await recognizeOcrPage(localWorker, canvas, highAccuracy, '');
+                assertActive();
+                const lines = (result.data.lines || flattenOcrLines(result.data.blocks)).map(line => ({
                     ...line,
                     text: autoCorrect ? correctCommonVietnameseOcr(line.text) : line.text
                 }));
@@ -975,56 +1105,74 @@
                 sourcePage.cleanup();
                 await new Promise(resolve => setTimeout(resolve, 0));
             }
-            if (ocrState.cancelRequested) throw new Error('Đã dừng OCR.');
+            assertActive();
             ocrState.extractedText = extractedPages.join('\n\n--- Trang mới ---\n\n');
             setOcrProgress(94, 'Đang nhúng font Unicode và tạo PDF…', 'blue');
             const outputBytes = await outputDoc.save({ useObjectStreams: true, addDefaultPage: false });
+            assertActive();
             setOcrProgress(97, 'Đang kiểm tra lớp văn bản đầu ra…', 'blue');
             const verification = await verifyOcrPdf(outputBytes);
+            assertActive();
             if (!verification.characterCount) throw new Error('PDF đầu ra chưa có văn bản trích xuất được.');
             ocrState.outputBlob = new Blob([outputBytes], { type: 'application/pdf' });
-            ocrState.outputName = `${sanitizeFileName(ocrState.file.name)}_Turnitin_OCR.pdf`;
+            ocrState.outputName = `${sanitizeFileName(ocrState.file.name)}_OCR.pdf`;
             document.getElementById('v55-ocr-download').disabled = false;
             document.getElementById('v55-ocr-download-text').disabled = false;
             document.getElementById('v55-ocr-summary').textContent = `${recognizedPages} trang OCR • ${skippedPages} trang đã có chữ • ${verification.characterCount.toLocaleString('vi-VN')} ký tự kiểm tra được`;
             setOcrProgress(100, `Hoàn tất • ${verification.pagesWithText}/${verification.pageCount} trang có thể trích xuất chữ`, 'green');
-            if (typeof showToast === 'function') showToast('OCR hoàn tất. PDF đã có lớp chữ Unicode cho Turnitin.', 'success');
+            if (typeof showToast === 'function') showToast('OCR hoàn tất. PDF đã có lớp chữ Unicode có thể tìm kiếm.', 'success');
         } catch (error) {
-            const stopped = ocrState.cancelRequested || /Đã dừng OCR/i.test(error.message || '');
+            const stopped = ocrState.cancelRequested || runToken !== ocrState.runToken || error?.name === 'AbortError' || /Đã dừng OCR|Rendering cancelled/i.test(error.message || '');
             setOcrProgress(0, stopped ? 'Đã dừng OCR theo yêu cầu.' : `OCR lỗi: ${error.message}`, stopped ? 'slate' : 'rose');
             if (!stopped) throw error;
         } finally {
-            try { await ocrState.worker?.terminate(); } catch (_) {}
-            ocrState.worker = null;
+            try { await localWorker?.terminate(); } catch (_) {}
+            if (ocrState.worker === localWorker) ocrState.worker = null;
+            if (ocrState.renderTask === localRenderTask) ocrState.renderTask = null;
+            if (ocrState.loadingTask === localLoadingTask) ocrState.loadingTask = null;
+            if (ocrState.abortController === abortController) ocrState.abortController = null;
             try { sourcePdf?.destroy(); } catch (_) {}
-            setOcrRunning(false);
+            if (runToken === ocrState.runToken) setOcrRunning(false);
         }
     }
 
-    async function stopOcr() {
+    function stopOcr() {
         if (!ocrState.running) return;
         ocrState.cancelRequested = true;
-        setToolStatus('v55-ocr-status', 'Đang dừng OCR…', 'rose');
-        try { await ocrState.worker?.terminate(); } catch (_) {}
+        ocrState.runToken++;
+        const worker = ocrState.worker;
+        const renderTask = ocrState.renderTask;
+        const loadingTask = ocrState.loadingTask;
+        const abortController = ocrState.abortController;
         ocrState.worker = null;
+        ocrState.renderTask = null;
+        ocrState.loadingTask = null;
+        ocrState.abortController = null;
+        setOcrRunning(false);
+        setOcrProgress(0, 'Đã dừng OCR theo yêu cầu.', 'slate');
+        try { renderTask?.cancel(); } catch (_) {}
+        try { loadingTask?.destroy(); } catch (_) {}
+        try { abortController?.abort(); } catch (_) {}
+        try { Promise.resolve(worker?.terminate()).catch(() => {}); } catch (_) {}
+        if (typeof showToast === 'function') showToast('Đã dừng PDF to OCR.', 'info');
     }
 
     async function handleOcrStartStop() {
         if (ocrState.running) {
-            await stopOcr();
+            stopOcr();
             return;
         }
         try {
             await runOcr();
         } catch (error) {
-            console.error('OCR Turnitin:', error);
+            console.error('PDF to OCR:', error);
             if (typeof showToast === 'function') showToast(error.message || 'Không thể OCR PDF.', 'error');
         }
     }
 
     function downloadOcrPdf() {
         if (!ocrState.outputBlob) return;
-        downloadBlob(ocrState.outputBlob, ocrState.outputName || 'Turnitin_OCR.pdf');
+        downloadBlob(ocrState.outputBlob, ocrState.outputName || 'PDF_OCR.pdf');
     }
 
     function downloadOcrText() {
@@ -1517,7 +1665,7 @@
             else if (!document.getElementById('v55-ocr-modal')?.classList.contains('v54-hidden')) closeOcrTool();
             else if (!document.getElementById('v54-image-modal')?.classList.contains('v54-hidden')) closeImageTool();
         });
-        console.info(`PDF Optimizer Studio V${TOOL_VERSION}: công cụ ảnh, OCR Turnitin, chỉnh PDF và tự cắt viền đã sẵn sàng.`);
+        console.info(`PDF Optimizer Studio V${TOOL_VERSION}: công cụ ảnh, PDF to OCR, chỉnh PDF và tự cắt viền đã sẵn sàng.`);
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true });
