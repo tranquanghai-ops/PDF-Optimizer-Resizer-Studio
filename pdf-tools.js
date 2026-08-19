@@ -1,8 +1,12 @@
 (() => {
     'use strict';
 
-    const TOOL_VERSION = '5.4';
+    const TOOL_VERSION = '5.5';
     const MM_TO_PT = 2.834645669;
+    const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.min.js';
+    const TESSDATA_BEST_URL = 'https://tessdata.projectnaptha.com/4.0.0_best';
+    const FONTKIT_URL = 'https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js';
+    const NOTO_SANS_URL = 'https://cdn.jsdelivr.net/gh/notofonts/noto-fonts@main/hinted/ttf/NotoSans/NotoSans-Regular.ttf';
     const editorState = {
         itemIndex: null,
         sourceBuffer: null,
@@ -16,6 +20,16 @@
         renderToken: 0
     };
     const imageState = { entries: [], draggedId: null };
+    const ocrState = {
+        file: null,
+        running: false,
+        cancelRequested: false,
+        worker: null,
+        outputBlob: null,
+        outputName: '',
+        extractedText: '',
+        pageCount: 0
+    };
 
     function injectStyles() {
         const style = document.createElement('style');
@@ -29,6 +43,7 @@
             .v54-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
             .v54-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 7px 11px; border: 1px solid #cbd5e1; border-radius: 9px; color: #334155; background: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
             .v54-btn:hover { border-color: #93c5fd; color: #1d4ed8; background: #eff6ff; }
+            .v54-btn:disabled { opacity: .45; cursor: not-allowed; }
             .v54-btn-primary { border-color: #2563eb; color: #fff; background: #2563eb; }
             .v54-btn-primary:hover { color: #fff; background: #1d4ed8; }
             .v54-btn-green { border-color: #10b981; color: #fff; background: #059669; }
@@ -60,6 +75,9 @@
             .v54-image-name { overflow: hidden; padding: 7px 9px 3px; text-overflow: ellipsis; white-space: nowrap; color: #334155; font-size: 11px; font-weight: 700; }
             .v54-image-actions { display: flex; justify-content: center; gap: 5px; padding: 7px; }
             .v54-drop { padding: 22px; border: 2px dashed #93c5fd; border-radius: 14px; color: #475569; background: #eff6ff; text-align: center; cursor: pointer; }
+            .v55-ocr-progress { height: 10px; overflow: hidden; border-radius: 999px; background: #e2e8f0; }
+            .v55-ocr-progress > div { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#0ea5e9,#2563eb); transition: width .2s ease; }
+            .v55-ocr-preview { width: 100%; min-height: 180px; resize: vertical; padding: 12px; border: 1px solid #cbd5e1; border-radius: 12px; color: #0f172a; background: #f8fafc; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
             .v54-file-title-link { cursor: pointer; text-decoration: underline dotted transparent; text-underline-offset: 3px; }
             .v54-file-title-link:hover { color: #2563eb !important; text-decoration-color: #60a5fa; }
             @media (max-width: 900px) {
@@ -111,6 +129,12 @@
         imageButton.innerHTML = '<i class="fa-solid fa-images"></i> Ảnh → PDF';
         imageButton.addEventListener('click', openImageTool);
         toolbar.appendChild(imageButton);
+        const ocrButton = document.createElement('button');
+        ocrButton.id = 'v55-ocr-tool-button';
+        ocrButton.className = 'bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg transition-all flex items-center gap-2';
+        ocrButton.innerHTML = '<i class="fa-solid fa-spell-check"></i> OCR cho Turnitin';
+        ocrButton.addEventListener('click', openOcrTool);
+        toolbar.appendChild(ocrButton);
         dropZone.insertAdjacentElement('afterend', toolbar);
     }
 
@@ -421,6 +445,65 @@
                 </div>
             </div>
 
+            <div id="v55-ocr-modal" class="v54-modal v54-hidden" role="dialog" aria-modal="true" aria-labelledby="v55-ocr-title">
+                <div class="v54-panel" style="width:min(1050px,98vw)">
+                    <div class="v54-header">
+                        <div>
+                            <div id="v55-ocr-title" class="font-bold"><i class="fa-solid fa-spell-check text-sky-400 mr-2"></i>OCR PDF tiếng Việt cho Turnitin</div>
+                            <div class="text-[11px] text-slate-400 mt-0.5">Giữ nguyên hình ảnh • thêm lớp chữ Unicode có thể bôi chọn và tìm kiếm</div>
+                        </div>
+                        <button id="v55-ocr-close" class="v54-close" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="v54-toolbar">
+                        <input id="v55-ocr-input" type="file" accept="application/pdf,.pdf" class="hidden">
+                        <button id="v55-ocr-select" class="v54-btn v54-btn-primary"><i class="fa-solid fa-file-pdf"></i> Chọn PDF</button>
+                        <label class="text-xs font-semibold text-slate-600 ml-1" for="v55-ocr-dpi">Độ nét OCR</label>
+                        <select id="v55-ocr-dpi" class="v54-input">
+                            <option value="200">200 DPI — nhanh</option>
+                            <option value="250" selected>250 DPI — khuyên dùng</option>
+                            <option value="300">300 DPI — chữ nhỏ</option>
+                        </select>
+                        <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 ml-1">
+                            <input id="v55-ocr-skip-text" type="checkbox" checked>
+                            Bỏ qua trang đã có chữ
+                        </label>
+                    </div>
+                    <div class="min-h-0 flex-1 overflow-auto p-4 bg-slate-100">
+                        <div id="v55-ocr-drop" class="v54-drop">
+                            <i class="fa-solid fa-cloud-arrow-up text-3xl text-sky-500 mb-2"></i>
+                            <div class="font-bold">Kéo thả một file PDF dạng ảnh vào đây</div>
+                            <div class="text-xs mt-1">Mô hình tiếng Việt + tiếng Anh được tải ở lần chạy đầu; toàn bộ OCR thực hiện trên máy</div>
+                        </div>
+                        <div id="v55-ocr-file" class="v54-hidden mt-3 p-3 rounded-xl border border-sky-200 bg-white"></div>
+                        <div class="mt-4">
+                            <div class="flex items-center justify-between gap-3 mb-2">
+                                <span id="v55-ocr-status" class="text-xs font-semibold text-slate-500">Chưa chọn PDF</span>
+                                <span id="v55-ocr-percent" class="text-xs font-bold text-blue-700">0%</span>
+                            </div>
+                            <div class="v55-ocr-progress"><div id="v55-ocr-progress-bar"></div></div>
+                        </div>
+                        <div class="mt-4">
+                            <div class="flex items-center justify-between gap-2 mb-2">
+                                <label for="v55-ocr-preview" class="text-xs font-bold text-slate-700">Văn bản OCR để kiểm tra</label>
+                                <span id="v55-ocr-summary" class="text-[11px] text-slate-500">Chưa có kết quả</span>
+                            </div>
+                            <textarea id="v55-ocr-preview" class="v55-ocr-preview" readonly placeholder="Nội dung nhận dạng sẽ xuất hiện tại đây…"></textarea>
+                        </div>
+                        <div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
+                            <strong>Lưu ý:</strong> OCR giúp Turnitin đọc PDF dạng ảnh nhưng không thể đảm bảo đúng tuyệt đối. Hãy kiểm tra tên riêng, dấu tiếng Việt và thứ tự cột trước khi nộp.
+                        </div>
+                    </div>
+                    <div class="v54-section flex flex-wrap items-center gap-2">
+                        <button id="v55-ocr-reset" class="v54-btn v54-btn-danger"><i class="fa-solid fa-trash-arrow-up"></i> Chọn file khác</button>
+                        <div class="ml-auto flex flex-wrap gap-2">
+                            <button id="v55-ocr-download-text" class="v54-btn" disabled><i class="fa-solid fa-file-lines"></i> Tải TXT kiểm tra</button>
+                            <button id="v55-ocr-download" class="v54-btn v54-btn-green" disabled><i class="fa-solid fa-download"></i> Tải PDF cho Turnitin</button>
+                            <button id="v55-ocr-start" class="v54-btn v54-btn-primary"><i class="fa-solid fa-wand-magic-sparkles"></i> Bắt đầu OCR</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div id="v54-editor-modal" class="v54-modal v54-hidden" role="dialog" aria-modal="true" aria-labelledby="v54-editor-title">
                 <div class="v54-panel">
                     <div class="v54-header">
@@ -495,6 +578,29 @@
         document.getElementById('v54-image-export-separate').addEventListener('click', event =>
             withBusyButton(event.currentTarget, 'Đang đóng gói…', exportImagesSeparate));
 
+        const ocrInput = document.getElementById('v55-ocr-input');
+        const ocrDrop = document.getElementById('v55-ocr-drop');
+        document.getElementById('v55-ocr-close').addEventListener('click', closeOcrTool);
+        document.getElementById('v55-ocr-select').addEventListener('click', () => ocrInput.click());
+        ocrDrop.addEventListener('click', () => ocrInput.click());
+        ocrInput.addEventListener('change', event => {
+            selectOcrFile(event.target.files?.[0]);
+            event.target.value = '';
+        });
+        ['dragenter', 'dragover'].forEach(type => ocrDrop.addEventListener(type, event => {
+            event.preventDefault();
+            ocrDrop.classList.add('ring-4', 'ring-sky-200');
+        }));
+        ['dragleave', 'drop'].forEach(type => ocrDrop.addEventListener(type, event => {
+            event.preventDefault();
+            ocrDrop.classList.remove('ring-4', 'ring-sky-200');
+        }));
+        ocrDrop.addEventListener('drop', event => selectOcrFile([...(event.dataTransfer?.files || [])].find(file => /\.pdf$/i.test(file.name))));
+        document.getElementById('v55-ocr-reset').addEventListener('click', resetOcrTool);
+        document.getElementById('v55-ocr-start').addEventListener('click', handleOcrStartStop);
+        document.getElementById('v55-ocr-download').addEventListener('click', downloadOcrPdf);
+        document.getElementById('v55-ocr-download-text').addEventListener('click', downloadOcrText);
+
         document.getElementById('v54-editor-close').addEventListener('click', closePdfEditor);
         document.getElementById('v54-editor-select-all').addEventListener('click', selectAllEditorPages);
         document.getElementById('v54-editor-select-none').addEventListener('click', clearEditorSelection);
@@ -513,15 +619,332 @@
         document.getElementById('v54-split-ranges-button').addEventListener('click', event =>
             withBusyButton(event.currentTarget, 'Đang tách…', splitByRanges));
 
-        [document.getElementById('v54-image-modal'), document.getElementById('v54-editor-modal')].forEach(modal => {
+        [document.getElementById('v54-image-modal'), document.getElementById('v55-ocr-modal'), document.getElementById('v54-editor-modal')].forEach(modal => {
             modal.addEventListener('mousedown', event => {
-                if (event.target === modal) modal === document.getElementById('v54-image-modal') ? closeImageTool() : closePdfEditor();
+                if (event.target !== modal) return;
+                if (modal === document.getElementById('v54-image-modal')) closeImageTool();
+                else if (modal === document.getElementById('v55-ocr-modal')) closeOcrTool();
+                else closePdfEditor();
             });
         });
     }
 
     function openImageTool() {
         document.getElementById('v54-image-modal')?.classList.remove('v54-hidden');
+    }
+
+    function openOcrTool() {
+        document.getElementById('v55-ocr-modal')?.classList.remove('v54-hidden');
+    }
+
+    function closeOcrTool() {
+        document.getElementById('v55-ocr-modal')?.classList.add('v54-hidden');
+    }
+
+    function loadBrowserScript(id, source, ready) {
+        if (ready()) return Promise.resolve();
+        const existing = document.getElementById(id);
+        if (existing?._loadPromise) return existing._loadPromise;
+        if (existing) existing.remove();
+        const script = document.createElement('script');
+        script.id = id;
+        script.src = source;
+        script.crossOrigin = 'anonymous';
+        script._loadPromise = new Promise((resolve, reject) => {
+            script.addEventListener('load', () => ready() ? resolve() : reject(new Error(`Thư viện ${id} không khởi tạo được.`)), { once: true });
+            script.addEventListener('error', () => reject(new Error(`Không tải được thư viện ${id}.`)), { once: true });
+        });
+        document.head.appendChild(script);
+        return script._loadPromise;
+    }
+
+    function setOcrProgress(percent, message, tone = 'blue') {
+        const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+        const bar = document.getElementById('v55-ocr-progress-bar');
+        if (bar) bar.style.width = `${value}%`;
+        const label = document.getElementById('v55-ocr-percent');
+        if (label) label.textContent = `${value}%`;
+        if (message) setToolStatus('v55-ocr-status', message, tone);
+    }
+
+    function setOcrRunning(running) {
+        ocrState.running = running;
+        const button = document.getElementById('v55-ocr-start');
+        if (!button) return;
+        button.disabled = false;
+        if (running) {
+            button.className = 'v54-btn !border-red-600 !bg-red-600 !text-white hover:!bg-red-700';
+            button.innerHTML = '<i class="fa-solid fa-stop"></i> Dừng OCR';
+        } else {
+            button.className = 'v54-btn v54-btn-primary';
+            button.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Bắt đầu OCR';
+        }
+    }
+
+    function selectOcrFile(file) {
+        if (!file) return;
+        if (ocrState.running) {
+            if (typeof showToast === 'function') showToast('Hãy dừng OCR trước khi đổi file.', 'info');
+            return;
+        }
+        if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
+            if (typeof showToast === 'function') showToast('Chức năng OCR chỉ nhận file PDF.', 'info');
+            return;
+        }
+        ocrState.file = file;
+        ocrState.outputBlob = null;
+        ocrState.outputName = '';
+        ocrState.extractedText = '';
+        ocrState.pageCount = 0;
+        const fileBox = document.getElementById('v55-ocr-file');
+        fileBox.classList.remove('v54-hidden');
+        fileBox.innerHTML = `<div class="flex items-center gap-3"><i class="fa-solid fa-file-pdf text-2xl text-red-500"></i><div class="min-w-0"><div class="font-bold text-sm text-slate-800 truncate">${typeof escapeHtml === 'function' ? escapeHtml(file.name) : file.name}</div><div class="text-[11px] text-slate-500">${typeof formatBytes === 'function' ? formatBytes(file.size) : Math.round(file.size / 1024) + ' KB'}</div></div></div>`;
+        document.getElementById('v55-ocr-drop')?.classList.add('v54-hidden');
+        document.getElementById('v55-ocr-preview').value = '';
+        document.getElementById('v55-ocr-summary').textContent = 'Sẵn sàng nhận dạng';
+        document.getElementById('v55-ocr-download').disabled = true;
+        document.getElementById('v55-ocr-download-text').disabled = true;
+        setOcrProgress(0, 'Đã chọn PDF • sẵn sàng OCR', 'green');
+    }
+
+    async function resetOcrTool() {
+        if (ocrState.running) await stopOcr();
+        ocrState.file = null;
+        ocrState.outputBlob = null;
+        ocrState.outputName = '';
+        ocrState.extractedText = '';
+        ocrState.pageCount = 0;
+        document.getElementById('v55-ocr-file')?.classList.add('v54-hidden');
+        document.getElementById('v55-ocr-drop')?.classList.remove('v54-hidden');
+        document.getElementById('v55-ocr-preview').value = '';
+        document.getElementById('v55-ocr-summary').textContent = 'Chưa có kết quả';
+        document.getElementById('v55-ocr-download').disabled = true;
+        document.getElementById('v55-ocr-download-text').disabled = true;
+        setOcrProgress(0, 'Chưa chọn PDF', 'slate');
+    }
+
+    function flattenOcrLines(blocks) {
+        const lines = [];
+        for (const block of blocks || []) {
+            for (const paragraph of block.paragraphs || []) {
+                for (const line of paragraph.lines || []) {
+                    const text = String(line.text || '').replace(/\s+/g, ' ').trim().normalize('NFC');
+                    if (text && line.bbox) lines.push({ text, bbox: line.bbox, confidence: Number(line.confidence ?? paragraph.confidence ?? block.confidence ?? 0) });
+                }
+            }
+        }
+        return lines;
+    }
+
+    function filterFontText(text, supportedCodePoints) {
+        return Array.from(String(text || ''))
+            .filter(character => {
+                const code = character.codePointAt(0);
+                return (code >= 32 || character === '\t') && supportedCodePoints.has(code);
+            })
+            .join('')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function addInvisibleOcrLine(page, font, supportedCodePoints, line, canvasWidth, canvasHeight) {
+        const text = filterFontText(line.text, supportedCodePoints);
+        if (!text) return 0;
+        const box = typeof page.getCropBox === 'function' ? page.getCropBox() : { x: 0, y: 0, ...page.getSize() };
+        const x = box.x + (line.bbox.x0 / canvasWidth) * box.width;
+        const y = box.y + box.height - (line.bbox.y1 / canvasHeight) * box.height;
+        const targetWidth = Math.max(1, ((line.bbox.x1 - line.bbox.x0) / canvasWidth) * box.width);
+        const fontSize = Math.max(2, Math.min(72, ((line.bbox.y1 - line.bbox.y0) / canvasHeight) * box.height * .88));
+        const naturalWidth = Math.max(.1, font.widthOfTextAtSize(text, fontSize));
+        const horizontalScale = Math.max(25, Math.min(200, (targetWidth / naturalWidth) * 100));
+        page.setFont(font);
+        page.pushOperators(
+            PDFLib.pushGraphicsState(),
+            PDFLib.beginText(),
+            PDFLib.setFontAndSize(page.fontKey, fontSize),
+            PDFLib.setTextRenderingMode(PDFLib.TextRenderingMode.Invisible),
+            PDFLib.setCharacterSqueeze(horizontalScale),
+            PDFLib.moveText(x, y),
+            PDFLib.showText(font.encodeText(text)),
+            PDFLib.endText(),
+            PDFLib.popGraphicsState()
+        );
+        return text.length;
+    }
+
+    async function ensureOcrDependencies() {
+        setOcrProgress(1, 'Đang tải bộ máy OCR tiếng Việt…', 'blue');
+        await Promise.all([
+            loadBrowserScript('v55-tesseract-script', TESSERACT_URL, () => !!window.Tesseract?.createWorker),
+            loadBrowserScript('v55-fontkit-script', FONTKIT_URL, () => !!window.fontkit)
+        ]);
+    }
+
+    async function verifyOcrPdf(bytes) {
+        const loadingTask = pdfjsLib.getDocument({ data: bytes.slice(0) });
+        let pdf = null;
+        let pagesWithText = 0;
+        let characterCount = 0;
+        try {
+            pdf = await loadingTask.promise;
+            for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+                const page = await pdf.getPage(pageNumber);
+                const content = await page.getTextContent();
+                const text = content.items.map(item => item.str || '').join(' ').trim();
+                if (text) pagesWithText++;
+                characterCount += text.length;
+                page.cleanup();
+            }
+            return { pagesWithText, characterCount, pageCount: pdf.numPages };
+        } finally {
+            try { pdf?.destroy(); } catch (_) {}
+        }
+    }
+
+    async function runOcr() {
+        if (!ocrState.file) throw new Error('Hãy chọn một file PDF trước khi OCR.');
+        ocrState.cancelRequested = false;
+        ocrState.outputBlob = null;
+        ocrState.extractedText = '';
+        document.getElementById('v55-ocr-preview').value = '';
+        document.getElementById('v55-ocr-download').disabled = true;
+        document.getElementById('v55-ocr-download-text').disabled = true;
+        setOcrRunning(true);
+        let sourcePdf = null;
+        try {
+            await ensureOcrDependencies();
+            if (ocrState.cancelRequested) throw new Error('Đã dừng OCR.');
+            const sourceBytes = await ocrState.file.arrayBuffer();
+            const loadingTask = pdfjsLib.getDocument({ data: sourceBytes.slice(0) });
+            sourcePdf = await loadingTask.promise;
+            ocrState.pageCount = sourcePdf.numPages;
+            const outputDoc = await PDFLib.PDFDocument.load(sourceBytes.slice(0), { ignoreEncryption: true });
+            outputDoc.registerFontkit(window.fontkit);
+            setOcrProgress(3, 'Đang tải font Unicode tiếng Việt…', 'blue');
+            const fontResponse = await fetch(NOTO_SANS_URL);
+            if (!fontResponse.ok) throw new Error(`Không tải được font Unicode (${fontResponse.status}).`);
+            const unicodeFont = await outputDoc.embedFont(await fontResponse.arrayBuffer(), { subset: true });
+            const supportedCodePoints = new Set(unicodeFont.getCharacterSet());
+            const pdfPages = outputDoc.getPages();
+            const dpi = Number(document.getElementById('v55-ocr-dpi').value || 250);
+            const skipExistingText = document.getElementById('v55-ocr-skip-text').checked;
+            let activePage = 0;
+            ocrState.worker = await Tesseract.createWorker('vie+eng', Tesseract.OEM.LSTM_ONLY, {
+                langPath: TESSDATA_BEST_URL,
+                logger: message => {
+                    if (!ocrState.running || !message) return;
+                    const stage = String(message.status || 'Đang nhận dạng').replace(/^./, character => character.toUpperCase());
+                    const pageProgress = Number(message.progress || 0);
+                    const overall = 5 + ((activePage + pageProgress) / Math.max(1, ocrState.pageCount)) * 87;
+                    setOcrProgress(overall, `Trang ${Math.min(activePage + 1, ocrState.pageCount)}/${ocrState.pageCount} • ${stage}`, 'blue');
+                }
+            });
+            await ocrState.worker.setParameters({
+                tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+                preserve_interword_spaces: '1',
+                user_defined_dpi: String(dpi)
+            });
+            const extractedPages = [];
+            let recognizedPages = 0;
+            let skippedPages = 0;
+            for (let pageNumber = 1; pageNumber <= sourcePdf.numPages; pageNumber++) {
+                if (ocrState.cancelRequested) throw new Error('Đã dừng OCR.');
+                activePage = pageNumber - 1;
+                const sourcePage = await sourcePdf.getPage(pageNumber);
+                if (skipExistingText) {
+                    const existing = await sourcePage.getTextContent();
+                    const existingText = existing.items.map(item => item.str || '').join(' ').replace(/\s+/g, ' ').trim();
+                    if (existingText.length >= 20) {
+                        extractedPages.push(existingText);
+                        skippedPages++;
+                        sourcePage.cleanup();
+                        setOcrProgress(5 + (pageNumber / sourcePdf.numPages) * 87, `Trang ${pageNumber}/${sourcePdf.numPages} đã có chữ • bỏ qua OCR`, 'blue');
+                        continue;
+                    }
+                }
+                const baseViewport = sourcePage.getViewport({ scale: 1 });
+                let scale = dpi / 72;
+                const maxPixels = 22_000_000;
+                const estimatedPixels = baseViewport.width * scale * baseViewport.height * scale;
+                if (estimatedPixels > maxPixels) scale *= Math.sqrt(maxPixels / estimatedPixels);
+                const viewport = sourcePage.getViewport({ scale });
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.ceil(viewport.width));
+                canvas.height = Math.max(1, Math.ceil(viewport.height));
+                const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+                context.fillStyle = '#fff';
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                await sourcePage.render({ canvasContext: context, viewport }).promise;
+                const result = await ocrState.worker.recognize(canvas, {}, { text: true, blocks: true });
+                const lines = flattenOcrLines(result.data.blocks);
+                const pageText = String(result.data.text || lines.map(line => line.text).join('\n')).trim().normalize('NFC');
+                extractedPages.push(pageText);
+                for (const line of lines) addInvisibleOcrLine(pdfPages[pageNumber - 1], unicodeFont, supportedCodePoints, line, canvas.width, canvas.height);
+                recognizedPages++;
+                document.getElementById('v55-ocr-preview').value = extractedPages.join('\n\n--- Trang mới ---\n\n').slice(0, 120000);
+                const wordCount = extractedPages.join(' ').trim().split(/\s+/).filter(Boolean).length;
+                document.getElementById('v55-ocr-summary').textContent = `${recognizedPages} trang OCR • khoảng ${wordCount.toLocaleString('vi-VN')} từ`;
+                canvas.width = 1;
+                canvas.height = 1;
+                sourcePage.cleanup();
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+            if (ocrState.cancelRequested) throw new Error('Đã dừng OCR.');
+            ocrState.extractedText = extractedPages.join('\n\n--- Trang mới ---\n\n');
+            setOcrProgress(94, 'Đang nhúng font Unicode và tạo PDF…', 'blue');
+            const outputBytes = await outputDoc.save({ useObjectStreams: true, addDefaultPage: false });
+            setOcrProgress(97, 'Đang kiểm tra lớp văn bản đầu ra…', 'blue');
+            const verification = await verifyOcrPdf(outputBytes);
+            if (!verification.characterCount) throw new Error('PDF đầu ra chưa có văn bản trích xuất được.');
+            ocrState.outputBlob = new Blob([outputBytes], { type: 'application/pdf' });
+            ocrState.outputName = `${sanitizeFileName(ocrState.file.name)}_Turnitin_OCR.pdf`;
+            document.getElementById('v55-ocr-download').disabled = false;
+            document.getElementById('v55-ocr-download-text').disabled = false;
+            document.getElementById('v55-ocr-summary').textContent = `${recognizedPages} trang OCR • ${skippedPages} trang đã có chữ • ${verification.characterCount.toLocaleString('vi-VN')} ký tự kiểm tra được`;
+            setOcrProgress(100, `Hoàn tất • ${verification.pagesWithText}/${verification.pageCount} trang có thể trích xuất chữ`, 'green');
+            if (typeof showToast === 'function') showToast('OCR hoàn tất. PDF đã có lớp chữ Unicode cho Turnitin.', 'success');
+        } catch (error) {
+            const stopped = ocrState.cancelRequested || /Đã dừng OCR/i.test(error.message || '');
+            setOcrProgress(0, stopped ? 'Đã dừng OCR theo yêu cầu.' : `OCR lỗi: ${error.message}`, stopped ? 'slate' : 'rose');
+            if (!stopped) throw error;
+        } finally {
+            try { await ocrState.worker?.terminate(); } catch (_) {}
+            ocrState.worker = null;
+            try { sourcePdf?.destroy(); } catch (_) {}
+            setOcrRunning(false);
+        }
+    }
+
+    async function stopOcr() {
+        if (!ocrState.running) return;
+        ocrState.cancelRequested = true;
+        setToolStatus('v55-ocr-status', 'Đang dừng OCR…', 'rose');
+        try { await ocrState.worker?.terminate(); } catch (_) {}
+        ocrState.worker = null;
+    }
+
+    async function handleOcrStartStop() {
+        if (ocrState.running) {
+            await stopOcr();
+            return;
+        }
+        try {
+            await runOcr();
+        } catch (error) {
+            console.error('OCR Turnitin:', error);
+            if (typeof showToast === 'function') showToast(error.message || 'Không thể OCR PDF.', 'error');
+        }
+    }
+
+    function downloadOcrPdf() {
+        if (!ocrState.outputBlob) return;
+        downloadBlob(ocrState.outputBlob, ocrState.outputName || 'Turnitin_OCR.pdf');
+    }
+
+    function downloadOcrText() {
+        if (!ocrState.extractedText) return;
+        const blob = new Blob([`\uFEFF${ocrState.extractedText}`], { type: 'text/plain;charset=utf-8' });
+        downloadBlob(blob, `${sanitizeFileName(ocrState.file?.name)}_OCR_kiem_tra.txt`);
     }
 
     function closeImageTool() {
@@ -1005,9 +1428,10 @@
         document.addEventListener('keydown', event => {
             if (event.key !== 'Escape') return;
             if (!document.getElementById('v54-editor-modal')?.classList.contains('v54-hidden')) closePdfEditor();
+            else if (!document.getElementById('v55-ocr-modal')?.classList.contains('v54-hidden')) closeOcrTool();
             else if (!document.getElementById('v54-image-modal')?.classList.contains('v54-hidden')) closeImageTool();
         });
-        console.info(`PDF Optimizer Studio V${TOOL_VERSION}: công cụ ảnh, chỉnh PDF và tự cắt viền đã sẵn sàng.`);
+        console.info(`PDF Optimizer Studio V${TOOL_VERSION}: công cụ ảnh, OCR Turnitin, chỉnh PDF và tự cắt viền đã sẵn sàng.`);
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true });
