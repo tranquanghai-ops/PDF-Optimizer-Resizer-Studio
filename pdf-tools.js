@@ -90,6 +90,10 @@
                         <a href="mailto:truongthithuydiem@tdtu.edu.vn" class="font-medium text-blue-600 hover:text-blue-700 hover:underline">truongthithuydiem@tdtu.edu.vn</a>
                     </span>
                 </div>
+                <div class="mt-1 text-[11px] text-slate-500">
+                    Code developed with: <strong class="text-slate-700">OpenAI Codex</strong>
+                    <span class="text-slate-400">(AI coding assistant)</span>
+                </div>
             `;
         }
     }
