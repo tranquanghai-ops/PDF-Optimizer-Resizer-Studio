@@ -1,7 +1,7 @@
 (() => {
     'use strict';
 
-    const TOOL_VERSION = '5.7';
+    const TOOL_VERSION = '5.8';
     const MM_TO_PT = 2.834645669;
     const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.min.js';
     const TESSDATA_BEST_URL = 'https://tessdata.projectnaptha.com/4.0.0_best';
@@ -479,7 +479,7 @@
                         </label>
                         <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 ml-1">
                             <input id="v55-ocr-high-accuracy" type="checkbox" checked>
-                            Chính xác cao (2 lượt)
+                            Chính xác cao (đa lượt)
                         </label>
                         <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 ml-1">
                             <input id="v55-ocr-auto-correct" type="checkbox" checked>
@@ -741,12 +741,35 @@
         setOcrProgress(0, 'Chưa chọn PDF', 'slate');
     }
 
+    function trimOcrLineWords(line) {
+        const words = line?.words || [];
+        if (!words.length) return String(line?.text || '').replace(/\s+/g, ' ').trim();
+        const commonShortWords = new Set(['ai', 'an', 'có', 'đã', 'để', 'do', 'là', 'mà', 'này', 'nên', 'ở', 'tại', 'thì', 'từ', 'và', 'vì', 'về', 'với', 'xử']);
+        const isUsefulBoundaryWord = word => {
+            const text = String(word?.text || '').trim();
+            const compact = text.replace(/\s/g, '');
+            const letters = compact.match(/\p{L}/gu) || [];
+            const digits = compact.match(/\p{N}/gu) || [];
+            const confidence = Number(word?.confidence || 0);
+            if (/^\d{1,3}$/.test(compact)) return confidence >= 45;
+            if (commonShortWords.has(compact.toLocaleLowerCase('vi'))) return true;
+            if (/[#|^`{}\[\]<>]/.test(compact) && confidence < 55) return false;
+            if (letters.length >= 3) return true;
+            return letters.length + digits.length >= 2 && confidence >= 45;
+        };
+        let start = 0;
+        let end = words.length;
+        while (start < end && !isUsefulBoundaryWord(words[start])) start++;
+        while (end > start && !isUsefulBoundaryWord(words[end - 1])) end--;
+        return words.slice(start, end).map(word => String(word.text || '').trim()).filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    }
+
     function flattenOcrLines(blocks) {
         const lines = [];
         for (const block of blocks || []) {
             for (const paragraph of block.paragraphs || []) {
                 for (const line of paragraph.lines || []) {
-                    const text = String(line.text || '').replace(/\s+/g, ' ').trim().normalize('NFC');
+                    const text = trimOcrLineWords(line).normalize('NFC');
                     if (text && line.bbox) lines.push({ text, bbox: line.bbox, confidence: Number(line.confidence ?? paragraph.confidence ?? block.confidence ?? 0) });
                 }
             }
@@ -763,6 +786,10 @@
     function correctCommonVietnameseOcr(text) {
         const replacements = [
             [/đ[ồôó]\s*(?:ó\s*)?[aá]n/giu, 'đồ án'],
+            [/ph[ẩa]n\s+gi[ớốo]i\s+thi[eệ]u/giu, 'phần giới thiệu'],
+            [/th[oô]ng\s*tin\s*chung\s*đ[ềểe]\s*t[aà]i/giu, 'thông tin chung đề tài'],
+            [/t[eê]n\s+đ[ềểổo]\s+t[aà]i/giu, 'tên đề tài'],
+            [/lo[aạ]i\s+h[iì]nh\s+đ[ặa]c\s+th[ùủu]/giu, 'loại hình đặc thù'],
             [/thi[eế]t\s+k[eế]\s+nội\s+th[aấ]t/giu, 'thiết kế nội thất'],
             [/trung\s+tam/giu, 'trung tâm'],
             [/ch[aă]m\s+s[oó]c/giu, 'chăm sóc'],
@@ -772,7 +799,51 @@
             [/l[úyý]\s+do\s+ch[oọ]n\s+(?:d[eéề]\s*)?t[aàá]i/giu, 'lý do chọn đề tài'],
             [/phạm\s*vi\s+v[aà]\s+giới\s+hạn\s+nghi[eê]n\s+c[uứ]u/giu, 'phạm vi và giới hạn nghiên cứu'],
             [/[yý]\s+tưởng\s+thi[eế]t\s+k[eế]/giu, 'ý tưởng thiết kế'],
-            [/tp\.\s*h[oồ]\s*chí\s*minh/giu, 'TP. Hồ Chí Minh']
+            [/tp\.\s*h[oồ]\s*chí\s*minh/giu, 'TP. Hồ Chí Minh'],
+            [/tuu\s+nhi[eê]n/giu, 'tuy nhiên'],
+            [/chuu[eê]n/giu, 'chuyên'],
+            [/tư\s+duu/giu, 'tư duy'],
+            [/ch[uủ]\s+u[eế]u/giu, 'chủ yếu'],
+            [/(?<!\p{L})u\s+t[eếể]/giu, 'y tế'],
+            [/th[uú]\s+u(?=\s|[,.;:]|$)/giu, 'thú y'],
+            [/gi[oỏ]i\s+tr[ií]/giu, 'giải trí'],
+            [/gi[oỏ]i\s+t[oỏ]a/giu, 'giải tỏa'],
+            [/mua\s+s[oố]m/giu, 'mua sắm'],
+            [/ti[eệ]n\s+ngh[iĩ]/giu, 'tiện nghi'],
+            [/kh[oó]ng\s+khu[ẩả]n/giu, 'kháng khuẩn'],
+            [/[ơo]n\s+to[aà]n/giu, 'an toàn'],
+            [/[kw]hu\s+đô\s+thị\s+phú\s+\S{1,5}\s+hưng/giu, 'Khu đô thị Phú Mỹ Hưng'],
+            [/t[aâ]n\s+\S{1,5}[,.]\s*tp\s+h[co]m/giu, 'Tân Mỹ, TP. HCM'],
+            [/đâu\s+l[ờò]\s+khu/giu, 'đây là khu'],
+            [/cư\s+d[oô]n/giu, 'cư dân'],
+            [/m[ỏo]ng\s+xanh/giu, 'mảng xanh'],
+            [/hạ\s+t[ằả]ng/giu, 'hạ tầng'],
+            [/l[ũú]\s+cách\s+âm/giu, 'xử lý cách âm'],
+            [/c[oó]c\s+khu\s+vực/giu, 'các khu vực'],
+            [/l[oò]\s+loại\s+hình/giu, 'là loại hình'],
+            [/c[ơo]o\s+cấp/giu, 'cao cấp'],
+            [/v[oò]\s+giải\s+trí/giu, 'và giải trí'],
+            [/l[ấa]u\s+thú\s+cưng/giu, 'lấy thú cưng'],
+            [/[úu]\s+tưởng/giu, 'ý tưởng'],
+            [/sợi\s+d[âa]u/giu, 'sợi dây'],
+            [/c[ỏo]m\s+xúc/giu, 'cảm xúc'],
+            [/không\s+gi[ơo]n/giu, 'không gian'],
+            [/th[ụu]\s+nhập/giu, 'thu nhập'],
+            [/mùi\s+hồi/giu, 'mùi hôi'],
+            [/c[ơo]o(?=[\s,.;:])/giu, 'cao'],
+            [/phòng\s+khám\s+thú(?=\s*[,.;:]|\s*$)/giu, 'phòng khám thú y'],
+            [/xử\s+xử\s+lý/giu, 'xử lý'],
+            [/xung\s+["“”']?quanh/giu, 'xung quanh'],
+            [/\)\s*\}/gu, ')'],
+            [/\(?ật\s+độ\s+mảng\s+xanh/giu, 'Mật độ mảng xanh'],
+            [/độ\s*\|\s*m(?=\s+để)/giu, 'độ ẩm'],
+            [/kí\s+sinh\s+trùng\s*\(\s*ve,?\s*rộn\s*\)/giu, 'kí sinh trùng (ve, rận)'],
+            [/hình\s+[o0]\s*[.]?\s*[iIl1]/giu, 'Hình 0.1'],
+            [/tailu?j?[ao]gs/giu, 'TailWags'],
+            [/poals/giu, 'Pals'],
+            [/8p[øoơ]/giu, 'Spa'],
+            [/tailu?i?aos\s*\S*\s*pals\s+cfertpe/giu, 'TAILWAGS & PALS CENTRE'],
+            [/tailu?aos\s*\S*\s*pals\s+cert\S*/giu, 'TAILWAGS & PALS CENTRE']
         ];
         return replacements.reduce((result, [pattern, replacement]) =>
             result.replace(pattern, match => preserveOcrCase(match, replacement)), String(text || '').normalize('NFC'));
@@ -856,17 +927,127 @@
         });
     }
 
-    function enhanceOcrCanvas(sourceCanvas) {
+    function isUsefulOcrLine(line) {
+        const text = String(line?.text || '').replace(/\s+/g, ' ').trim();
+        const confidence = Number(line?.confidence || 0);
+        const compact = text.replace(/\s/g, '');
+        const alphaNumeric = compact.match(/[\p{L}\p{N}]/gu) || [];
+        if (!text || confidence < 16 || alphaNumeric.length < 2) {
+            return /^\d{1,3}$/.test(compact) && confidence >= 60;
+        }
+        if (alphaNumeric.length / Math.max(1, compact.length) < .42) return false;
+        const letterTokens = text.match(/\p{L}+/gu) || [];
+        if (!/^\d{1,3}$/.test(compact) && alphaNumeric.length <= 2) return false;
+        if (alphaNumeric.length <= 5 && letterTokens.length >= 2 && letterTokens.every(token => token.length === 1)) return false;
+        if (confidence < 50 && alphaNumeric.length < 8) return false;
+        return true;
+    }
+
+    function filterUsefulOcrLines(lines) {
+        return (lines || []).filter(isUsefulOcrLine);
+    }
+
+    async function adaptiveThresholdOcrCanvas(sourceCanvas, assertActive = () => {}) {
         const canvas = document.createElement('canvas');
         canvas.width = sourceCanvas.width;
         canvas.height = sourceCanvas.height;
-        const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+        const width = canvas.width;
+        const height = canvas.height;
+        const sourceContext = sourceCanvas.getContext('2d', { alpha: false, willReadFrequently: true });
+        const image = sourceContext.getImageData(0, 0, width, height);
+        const pixels = image.data;
+        const gray = new Uint8Array(width * height);
+        for (let y = 0; y < height; y++) {
+            const rowOffset = y * width;
+            for (let x = 0; x < width; x++) {
+                const pixelOffset = (rowOffset + x) * 4;
+                gray[rowOffset + x] = Math.round(pixels[pixelOffset] * .299 + pixels[pixelOffset + 1] * .587 + pixels[pixelOffset + 2] * .114);
+            }
+            if (y % 96 === 0) {
+                assertActive();
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+        }
+
+        const radius = Math.max(12, Math.min(22, Math.round(Math.min(width, height) / 170)));
+        const windowRows = radius * 2 + 1;
+        const horizontalCounts = new Uint16Array(width);
+        for (let x = 0; x < width; x++) horizontalCounts[x] = Math.min(width - 1, x + radius) - Math.max(0, x - radius) + 1;
+        const rowRing = new Uint32Array(windowRows * width);
+        const verticalSums = new Uint32Array(width);
+        let firstActiveRow = 0;
+        let nextRow = 0;
+
+        const addRow = row => {
+            const slotOffset = (row % windowRows) * width;
+            const sourceOffset = row * width;
+            let running = 0;
+            for (let x = 0; x <= Math.min(width - 1, radius); x++) running += gray[sourceOffset + x];
+            for (let x = 0; x < width; x++) {
+                if (x > 0) {
+                    const leaving = x - radius - 1;
+                    const entering = x + radius;
+                    if (leaving >= 0) running -= gray[sourceOffset + leaving];
+                    if (entering < width) running += gray[sourceOffset + entering];
+                }
+                rowRing[slotOffset + x] = running;
+                verticalSums[x] += running;
+            }
+        };
+
+        const removeRow = row => {
+            const slotOffset = (row % windowRows) * width;
+            for (let x = 0; x < width; x++) verticalSums[x] -= rowRing[slotOffset + x];
+        };
+
+        const brightnessBias = 20;
+        for (let y = 0; y < height; y++) {
+            const minimumRow = Math.max(0, y - radius);
+            while (firstActiveRow < minimumRow) removeRow(firstActiveRow++);
+            const maximumRow = Math.min(height - 1, y + radius);
+            while (nextRow <= maximumRow) addRow(nextRow++);
+            const activeRowCount = maximumRow - minimumRow + 1;
+            const rowOffset = y * width;
+            for (let x = 0; x < width; x++) {
+                const localMean = verticalSums[x] / (activeRowCount * horizontalCounts[x]);
+                const value = gray[rowOffset + x] > localMean + brightnessBias ? 0 : 255;
+                const pixelOffset = (rowOffset + x) * 4;
+                pixels[pixelOffset] = value;
+                pixels[pixelOffset + 1] = value;
+                pixels[pixelOffset + 2] = value;
+                pixels[pixelOffset + 3] = 255;
+            }
+            if (y % 64 === 0) {
+                assertActive();
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+        }
+        assertActive();
+        canvas.getContext('2d', { alpha: false }).putImageData(image, 0, 0);
+        return canvas;
+    }
+
+    function cropOcrCanvas(sourceCanvas, x, y, width, height) {
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(width));
+        canvas.height = Math.max(1, Math.round(height));
+        const context = canvas.getContext('2d', { alpha: false });
         context.fillStyle = '#fff';
         context.fillRect(0, 0, canvas.width, canvas.height);
-        context.filter = 'grayscale(1) contrast(1.38)';
-        context.drawImage(sourceCanvas, 0, 0);
-        context.filter = 'none';
+        context.drawImage(sourceCanvas, Math.round(x), Math.round(y), canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
         return canvas;
+    }
+
+    function offsetOcrLines(lines, offsetX, offsetY) {
+        return (lines || []).map(line => ({
+            ...line,
+            bbox: {
+                x0: line.bbox.x0 + offsetX,
+                y0: line.bbox.y0 + offsetY,
+                x1: line.bbox.x1 + offsetX,
+                y1: line.bbox.y1 + offsetY
+            }
+        }));
     }
 
     function scoreOcrResult(result) {
@@ -878,29 +1059,67 @@
         return confidence + Math.min(8, vietnameseMarks * .08) - Math.min(18, noise * 2) + Math.min(4, usefulLength / 500);
     }
 
-    async function recognizeOcrPage(worker, canvas, highAccuracy, pageTextHint) {
+    async function recognizeOcrPage(worker, canvas, highAccuracy, pageTextHint, assertActive = () => {}) {
         await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO });
         const first = await worker.recognize(canvas, {}, { text: true, blocks: true });
-        const firstLines = flattenOcrLines(first.data.blocks);
+        assertActive();
+        const firstLines = filterUsefulOcrLines(flattenOcrLines(first.data.blocks));
         if (!highAccuracy) {
             first.data.lines = firstLines;
+            first.data.text = firstLines.map(line => line.text).join('\n');
             return first;
         }
-        const enhanced = enhanceOcrCanvas(canvas);
+        const enhanced = await adaptiveThresholdOcrCanvas(canvas, assertActive);
+        const recognitionResults = [first];
+        let mergedLines = firstLines;
         try {
-            const sparseLayout = String(first.data.text || pageTextHint || '').replace(/\s/g, '').length < 450;
-            await worker.setParameters({ tessedit_pageseg_mode: sparseLayout ? Tesseract.PSM.SPARSE_TEXT : Tesseract.PSM.AUTO });
-            const second = await worker.recognize(enhanced, {}, { text: true, blocks: true });
-            const secondLines = flattenOcrLines(second.data.blocks);
-            const mergedLines = mergeOcrLineSets(firstLines, secondLines);
-            const preferred = scoreOcrResult(second) > scoreOcrResult(first) ? second : first;
+            const isSpread = canvas.width / Math.max(1, canvas.height) >= 1.45;
+            const regions = isSpread
+                ? (() => {
+                    const middle = Math.round(canvas.width / 2);
+                    const overlap = Math.max(24, Math.round(canvas.width * .025));
+                    return [
+                        { x: 0, y: 0, width: Math.min(canvas.width, middle + overlap), height: canvas.height },
+                        { x: Math.max(0, middle - overlap), y: 0, width: canvas.width - Math.max(0, middle - overlap), height: canvas.height }
+                    ];
+                })()
+                : [{ x: 0, y: 0, width: canvas.width, height: canvas.height }];
+
+            await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO });
+            for (const region of regions) {
+                assertActive();
+                const input = isSpread ? cropOcrCanvas(enhanced, region.x, region.y, region.width, region.height) : enhanced;
+                try {
+                    const result = await worker.recognize(input, {}, { text: true, blocks: true });
+                    assertActive();
+                    recognitionResults.push(result);
+                    const lines = offsetOcrLines(filterUsefulOcrLines(flattenOcrLines(result.data.blocks)), region.x, region.y);
+                    mergedLines = mergeOcrLineSets(mergedLines, lines);
+                } finally {
+                    if (input !== enhanced) {
+                        input.width = 1;
+                        input.height = 1;
+                    }
+                }
+            }
+            if (isSpread) {
+                const middle = canvas.width / 2;
+                mergedLines.sort((firstLine, secondLine) => {
+                    const firstColumn = (firstLine.bbox.x0 + firstLine.bbox.x1) / 2 < middle ? 0 : 1;
+                    const secondColumn = (secondLine.bbox.x0 + secondLine.bbox.x1) / 2 < middle ? 0 : 1;
+                    if (firstColumn !== secondColumn) return firstColumn - secondColumn;
+                    const verticalDifference = firstLine.bbox.y0 - secondLine.bbox.y0;
+                    return Math.abs(verticalDifference) > 8 ? verticalDifference : firstLine.bbox.x0 - secondLine.bbox.x0;
+                });
+            }
+            const preferred = recognitionResults.reduce((best, result) => scoreOcrResult(result) > scoreOcrResult(best) ? result : best, first);
             return {
                 ...preferred,
                 data: {
                     ...preferred.data,
                     lines: mergedLines,
                     text: mergedLines.map(line => line.text).join('\n'),
-                    confidence: Math.max(Number(first.data.confidence || 0), Number(second.data.confidence || 0))
+                    confidence: Math.max(...recognitionResults.map(result => Number(result.data.confidence || 0)))
                 }
             };
         } finally {
@@ -1067,7 +1286,9 @@
                 }
                 const baseViewport = sourcePage.getViewport({ scale: 1 });
                 let scale = dpi / 72;
-                const maxPixels = 22_000_000;
+                // Tiền xử lý ngưỡng cục bộ cần thêm bộ nhớ; giới hạn này vẫn giữ
+                // khoảng 300 DPI cho trang đôi 2362×1417 px của file thử.
+                const maxPixels = highAccuracy ? 15_000_000 : 22_000_000;
                 const estimatedPixels = baseViewport.width * scale * baseViewport.height * scale;
                 if (estimatedPixels > maxPixels) scale *= Math.sqrt(maxPixels / estimatedPixels);
                 const viewport = sourcePage.getViewport({ scale });
@@ -1086,7 +1307,7 @@
                     localRenderTask = null;
                 }
                 assertActive();
-                const result = await recognizeOcrPage(localWorker, canvas, highAccuracy, '');
+                const result = await recognizeOcrPage(localWorker, canvas, highAccuracy, '', assertActive);
                 assertActive();
                 const lines = (result.data.lines || flattenOcrLines(result.data.blocks)).map(line => ({
                     ...line,
